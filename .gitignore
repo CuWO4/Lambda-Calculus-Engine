@@ -1,0 +1,8 @@
+.*/
+debug/
+tmp/
+build/
+
+*.exe
+*.o
+*.d
