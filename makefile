@@ -67,7 +67,7 @@ DEPS := $(OBJS:.o=.d)
 .PHONY: run clean docker lldb
 
 run: $(BUILD_DIR)/$(TARGET_EXEC)
-	./$(BUILD_DIR)/$(TARGET_EXEC) test/1.in
+	./$(BUILD_DIR)/$(TARGET_EXEC) test/1.in test/1.out
 
 clean:
 	-rm -rf $(BUILD_DIR)
