@@ -37,10 +37,15 @@ namespace lambda {
   }
 
   auto Variable::delta_reduce(
-    const std::unique_ptr<const Variable> variable,
-    const std::unique_ptr<const Expression> expression
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    return this->replace(variable->clone_variable(), expression->clone());
+    if (symbol_table.find(literal) != symbol_table.end()) {
+      return std::make_tuple(
+        symbol_table.find(literal)->second->clone(),
+        true
+      );
+    }
+    else { return std::make_tuple(this->clone(), false); }
   }
 
   auto Variable::to_string() const -> std::string { return literal; }
@@ -99,10 +104,13 @@ namespace lambda {
   }
 
   auto Abstraction::delta_reduce(
-    const std::unique_ptr<const Variable> variable,
-    const std::unique_ptr<const Expression> expression
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    return this->replace(variable->clone_variable(), expression->clone());
+    auto [body, is_changed] = this->body->delta_reduce(symbol_table);
+    return std::make_tuple(
+      std::make_unique<Abstraction>(this->binder->clone_variable(), std::move(body)),
+      is_changed
+    );
   }
 
   auto Abstraction::to_string() const -> std::string {
@@ -182,17 +190,16 @@ namespace lambda {
   }
 
   auto Application::delta_reduce(
-    const std::unique_ptr<const Variable> variable,
-    const std::unique_ptr<const Expression> expression
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     {
-      auto [first, is_changed] = this->first->replace(variable->clone_variable(), expression->clone());
+      auto [first, is_changed] = this->first->delta_reduce(symbol_table);
       if (is_changed) {
         return std::make_tuple(std::make_unique<Application>(std::move(first), second->clone()), true);
       }
     }
     {
-      auto [second, is_changed] = this->second->replace(variable->clone_variable(), expression->clone());
+      auto [second, is_changed] = this->second->delta_reduce(symbol_table);
       if (is_changed) {
         return std::make_tuple(std::make_unique<Application>(first->clone(), std::move(second)), true);
       }
@@ -255,31 +262,39 @@ namespace lambda {
   auto Reducer::reduce(
      std::unique_ptr<Expression> expression
   ) -> std::tuple<std::string, std::unique_ptr<Expression>> {
-    auto path_string = std::string("");
+
+    auto result_string = expression->to_string() + "\n";
     auto expr = std::move(expression);
-    start:
-      path_string += expr->to_string() + "\n";
+
+    bool is_changed_global = true;
+
+    while (is_changed_global) {
+      is_changed_global = false;
 
       {
         auto [new_expr, is_changed] = expr->beta_reduce();
         expr = std::move(new_expr);
 
-        if (is_changed) { goto start; }
+        if (is_changed) { 
+          is_changed_global = true;
+          result_string += "beta>\t" + expr->to_string() + "\n";
+          continue; 
+        }
       }
 
       {
-        for (auto& rule: symbol_table) {
-          auto [new_expr, is_changed] = expr->delta_reduce(
-            std::make_unique<Variable>(rule.first),
-            rule.second->clone()
-          );
-          expr = std::move(new_expr);
+        auto [new_expr, is_changed] = expr->delta_reduce(symbol_table);
+        expr = std::move(new_expr);
 
-          if (is_changed) { goto start; }
+        if (is_changed) { 
+          is_changed_global = true;
+          result_string += "delta>\t" + expr->to_string() + "\n";
+          continue; 
         }
       }
+    }
     
-    return std::make_tuple(path_string, std::move(expr));
+    return std::make_tuple(result_string, std::move(expr));
   }
 
   void Reducer::register_symbol(
