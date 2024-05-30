@@ -1,11 +1,14 @@
 #include <iostream>
+#include <stack>
 
 extern FILE* yyin;
 extern int yyparse(FILE* ast);
+extern std::stack<std::string> include_path_stack;
 FILE* out = stdout;
 
 void handle_args(int argc, char** argv) {
   if (argc < 2) { throw std::runtime_error("no input file specify"); }
+  include_path_stack.push(argv[1]);
   yyin = fopen(argv[1], "r");
   if (yyin == nullptr) { throw std::runtime_error("cannot open file"); }
 
