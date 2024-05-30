@@ -24,7 +24,12 @@ lambda [INPUT] [OUTPUT]
 
 所有数字会被自动推导为对应丘奇数.
 
-例如
+```
+import [PATH]
+```
+推导 `[PATH]` 指示的文件, 并保留其内的定义.
+
+## EXAMPLE
 ```
 # ++ := \n.\f.\x. f(n f x)
 @ ++ 2
