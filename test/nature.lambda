@@ -1,0 +1,17 @@
+import "logic.lambda"
+
+# ++ := \n.\f.\x. f(n f x)
+# -- := \n.\f.\x.n (\g.\h.h (g f)) (\u.x) (\u.u)
+
+# + := \m.\n.m ++ n
+# - := \m.\n.n -- m
+# * := \m.\n.m (+ n) 0
+# ^ := \b.\e.e b
+
+# is0? := \n.n (\x.F) T
+# <= := \m.\n.is0? (- m n)
+# >= := \m.\n.is0? (- n m)
+# = := \m.\n. & (<= m n) (>= m n)
+# != := \m.\n. ! (= m n)
+# < := \m.\n. & (<= m n) (!= m n)
+# > := \m.\n. & (>= m n) (!= m n)
