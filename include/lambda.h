@@ -18,20 +18,19 @@ namespace lambda {
   class Variable;
   class Expression {
   public:
-    virtual auto alpha_reduce(
-      const std::unique_ptr<const Variable> from,
-      const std::unique_ptr<const Variable> to
-    ) const -> std::unique_ptr<Expression> = 0;
-
-    virtual auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
+    virtual auto beta_reduce(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
 
     virtual auto replace(
       const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
 
     virtual auto apply(
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
 
     virtual auto delta_reduce(
@@ -47,7 +46,7 @@ namespace lambda {
 
     virtual ~Expression() = default;
 
-    auto get_free_variables() -> std::unordered_set<std::string> const&;
+    auto get_free_variables() const -> std::unordered_set<std::string> const&;
 
   protected:
     std::unordered_set<std::string> free_variables;
@@ -67,20 +66,19 @@ namespace lambda {
 
     auto get_literal() -> std::string const&;
 
-    auto alpha_reduce(
-      const std::unique_ptr<const Variable> from,
-      const std::unique_ptr<const Variable> to
-    ) const -> std::unique_ptr<Expression> override;
-
-    auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    auto beta_reduce(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto replace(
       const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto apply(
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto delta_reduce(
@@ -112,19 +110,22 @@ namespace lambda {
     Abstraction& operator=(Abstraction&& other) = default;
 
     auto alpha_reduce(
-      const std::unique_ptr<const Variable> from,
       const std::unique_ptr<const Variable> to
-    ) const -> std::unique_ptr<Expression> override;
+    ) const -> std::unique_ptr<Expression>;
 
-    auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    auto beta_reduce(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto replace(
       const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto apply(
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto delta_reduce(
@@ -155,20 +156,19 @@ namespace lambda {
     Application& operator=(Application& other) = delete;
     Application& operator=(Application&& other) = default;
 
-    auto alpha_reduce(
-      const std::unique_ptr<const Variable> from,
-      const std::unique_ptr<const Variable> to
-    ) const -> std::unique_ptr<Expression> override;
-
-    auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    auto beta_reduce(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto replace(
       const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto apply(
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto delta_reduce(

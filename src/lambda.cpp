@@ -18,8 +18,20 @@ namespace lambda {
     return result;
   }
 
+  static auto index_to_string(unsigned index) -> std::string {
+    constexpr unsigned LETTER_N = 26;
+    auto result = std::string("");
 
-  auto Expression::get_free_variables() -> std::unordered_set<std::string> const& {
+    for (; index >= LETTER_N; index /= LETTER_N) {
+      result += 'a' + index % LETTER_N;
+    }
+    result += 'a' + index % LETTER_N;
+
+    return result;
+  }
+
+
+  auto Expression::get_free_variables() const -> std::unordered_set<std::string> const& {
     return free_variables;
   }
 
@@ -33,21 +45,16 @@ namespace lambda {
 
   auto Variable::get_literal() -> std::string const& { return literal; }
 
-  auto Variable::alpha_reduce(
-    const std::unique_ptr<const Variable> from,
-    const std::unique_ptr<const Variable> to
-  ) const -> std::unique_ptr<Expression> {
-    if (*from == *this) { return to->clone(); }
-    else { return this->clone(); }
-  }
-
-  auto Variable::beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> {
+  auto Variable::beta_reduce(
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     return std::make_tuple(this->clone(), false);
   }
 
   auto Variable::replace(
       const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     if (*variable == *this) {
       return std::make_tuple(expression->clone(), true);
@@ -58,7 +65,8 @@ namespace lambda {
   }
 
   auto Variable::apply(
-    const std::unique_ptr<const Expression> expression
+    const std::unique_ptr<const Expression> expression,
+    std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     return std::make_tuple(this->clone(), false);
   }
@@ -101,20 +109,26 @@ namespace lambda {
   }
 
   auto Abstraction::alpha_reduce(
-    const std::unique_ptr<const Variable> from,
     const std::unique_ptr<const Variable> to
   ) const -> std::unique_ptr<Expression> {
-    if (*from == *binder) { return this->clone(); }
-    else { 
-      return std::make_unique<Abstraction>(
-        to->clone_variable(), 
-        body->alpha_reduce(from->clone_variable(), to->clone_variable())
-      ); 
-    }
+    auto [body, is_changed] = this->body->replace(
+      binder->clone_variable(), 
+      to->clone_variable(), 
+      {} // no bother checking (and should not check)
+    );
+    return std::make_unique<Abstraction>(
+      to->clone_variable(), 
+      std::move(body)
+    ); 
   }
 
-  auto Abstraction::beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    auto [body, is_changed] = this->body->beta_reduce();
+  auto Abstraction::beta_reduce(
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
+    bound_variables.emplace(binder->get_literal());
+    auto [body, is_changed] = this->body->beta_reduce(std::move(bound_variables));
+    bound_variables.erase(bound_variables.find(binder->get_literal()));
+    
     return std::make_tuple(
       std::make_unique<Abstraction>(binder->clone_variable(), std::move(body)),
       is_changed
@@ -123,16 +137,36 @@ namespace lambda {
 
   auto Abstraction::replace(
       const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     if (*this->binder == *variable) {
       return std::make_tuple(this->clone(), false);
     }
 
+    if (expression->get_free_variables().count(binder->get_literal()) > 0) {
+      for (int i = 0;; i++) {
+        auto new_binder_literal = index_to_string(i);
+        if (bound_variables.count(new_binder_literal) == 0) {
+          return this->alpha_reduce(
+            std::make_unique<Variable>(new_binder_literal)
+          )->replace(
+            variable->clone_variable(), 
+            expression->clone(), 
+            std::move(bound_variables)
+          );
+        }
+      }
+    }
+
+    bound_variables.emplace(binder->get_literal());
     auto [body, is_changed] = this->body->replace(
       variable->clone_variable(),
-      expression->clone()
+      expression->clone(),
+      std::move(bound_variables)
     );
+    bound_variables.erase(bound_variables.find(binder->get_literal()));
+
     return std::make_tuple(
       std::make_unique<Abstraction>(this->binder->clone_variable(), std::move(body)),
       is_changed
@@ -140,9 +174,17 @@ namespace lambda {
   }
 
   auto Abstraction::apply(
-    const std::unique_ptr<const Expression> expression
+    const std::unique_ptr<const Expression> expression,
+    std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    auto [body, is_changed] = this->body->replace(binder->clone_variable(), expression->clone());
+    bound_variables.emplace(binder->get_literal());
+    auto [body, is_changed] = this->body->replace(
+      binder->clone_variable(), 
+      expression->clone(),
+      std::move(bound_variables)
+    );
+    bound_variables.erase(bound_variables.find(binder->get_literal()));
+
     return std::make_tuple(std::move(body), true);
   }
 
@@ -187,29 +229,21 @@ namespace lambda {
     free_variables = this->first->get_free_variables() + this->second->get_free_variables();
   }
 
-  auto Application::alpha_reduce(
-    const std::unique_ptr<const Variable> from,
-    const std::unique_ptr<const Variable> to
-  ) const -> std::unique_ptr<Expression> {
-    return std::make_unique<Application>(
-      first->alpha_reduce(from->clone_variable(), to->clone_variable()),
-      second->alpha_reduce(from->clone_variable(), to->clone_variable())
-    );
-  }
-
-  auto Application::beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> {
+  auto Application::beta_reduce(
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     {
-      auto [result, is_changed] = first->apply(second->clone());
+      auto [result, is_changed] = first->apply(second->clone(), std::move(bound_variables));
       if (is_changed) { return std::make_tuple(std::move(result), true); }
     }
     {
-      auto [first, is_changed] = this->first->beta_reduce();
+      auto [first, is_changed] = this->first->beta_reduce(std::move(bound_variables));
       if (is_changed) {
         return std::make_tuple(std::make_unique<Application>(first->clone(), second->clone()), true);
       }
     }
     {
-      auto [second, is_changed] = this->second->beta_reduce();
+      auto [second, is_changed] = this->second->beta_reduce(std::move(bound_variables));
       if (is_changed) {
         return std::make_tuple(std::make_unique<Application>(first->clone(), second->clone()), true);
       }
@@ -219,17 +253,26 @@ namespace lambda {
 
   auto Application::replace(
       const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression
+      const std::unique_ptr<const Expression> expression,
+      std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     std::unique_ptr<Expression> first_result, second_result;
     bool is_changed_result = false;
     {
-      auto [first, is_changed] = this->first->replace(variable->clone_variable(), expression->clone());
+      auto [first, is_changed] = this->first->replace(
+        variable->clone_variable(), 
+        expression->clone(),
+        std::move(bound_variables)
+      );
       first_result = std::move(first);
       is_changed_result |= is_changed;
     }
     {
-      auto [second, is_changed] = this->second->replace(variable->clone_variable(), expression->clone());
+      auto [second, is_changed] = this->second->replace(
+        variable->clone_variable(), 
+        expression->clone(),
+        std::move(bound_variables)
+      );
       second_result = std::move(second);
       is_changed_result |= is_changed;
     }
@@ -240,7 +283,8 @@ namespace lambda {
   }
 
   auto Application::apply (
-    const std::unique_ptr<const Expression> expression
+    const std::unique_ptr<const Expression> expression,
+    std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     return std::make_tuple(this->clone(), false);
   }
@@ -328,7 +372,7 @@ namespace lambda {
       is_changed_global = false;
 
       {
-        auto [new_expr, is_changed] = expr->beta_reduce();
+        auto [new_expr, is_changed] = expr->beta_reduce({});
         expr = std::move(new_expr);
 
         if (is_changed) { 
