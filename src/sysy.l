@@ -28,6 +28,7 @@
 %}
 
 WhiteSpace      [ \n\r\t]
+LineComment     "//".*
 Identifier      [^0-9 \n\r\t\\@#.():][^ \n\r\t\\@#.:()]*
 Number          [0-9]+
 Path            [^:*?"<>|\n\r]+
@@ -36,6 +37,10 @@ Path            [^:*?"<>|\n\r]+
 %x  PATH_STATE
 
 %%
+
+{LineComment}
+{WhiteSpace}
+
 "import"              { BEGIN(IMPORT_STATE); }
 <IMPORT_STATE>{WhiteSpace}
 <IMPORT_STATE>\"      { BEGIN(PATH_STATE); }
@@ -53,8 +58,6 @@ Path            [^:*?"<>|\n\r]+
 <PATH_STATE>{WhiteSpace}
 <PATH_STATE>.         { return yytext[0]; }
 
-
-{WhiteSpace}
 ":="            { return TK_DEFINE; }
 {Identifier}    { strcpy(yylval.String, yytext); return TK_IDENTIFIER; }
 {Number}        { strcpy(yylval.String, yytext); return TK_NUMBER; }
