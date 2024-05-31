@@ -5,6 +5,7 @@
 #include <tuple>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace lambda {
 
@@ -45,6 +46,11 @@ namespace lambda {
     virtual auto clone() const -> std::unique_ptr<Expression> = 0;
 
     virtual ~Expression() = default;
+
+    auto get_free_variables() -> std::unordered_set<std::string> const&;
+
+  protected:
+    std::unordered_set<std::string> free_variables;
   };
 
   class Variable: public Expression {
@@ -58,6 +64,8 @@ namespace lambda {
 
     bool operator==(const Variable& right) const;
     bool operator==(const Variable&& right) const;
+
+    auto get_literal() -> std::string const&;
 
     auto alpha_reduce(
       const std::unique_ptr<const Variable> from,

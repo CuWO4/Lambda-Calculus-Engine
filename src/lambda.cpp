@@ -8,11 +8,30 @@ namespace lambda {
     return res;
   }
 
+  template <typename T>
+  static auto operator+(
+    std::unordered_set<T> const& a,
+    std::unordered_set<T> const& b
+  ) -> std::unordered_set<T> {
+    auto result = a;
+    result.insert(b.begin(), b.end());
+    return result;
+  }
 
-  Variable::Variable(std::string literal): literal(literal) {}
+
+  auto Expression::get_free_variables() -> std::unordered_set<std::string> const& {
+    return free_variables;
+  }
+
+
+  Variable::Variable(std::string literal): literal(literal) {
+    free_variables = { literal };
+  }
 
   bool Variable::operator==(const Variable& right) const { return literal == right.literal; }
   bool Variable::operator==(const Variable&& right) const { return literal == right.literal; }
+
+  auto Variable::get_literal() -> std::string const& { return literal; }
 
   auto Variable::alpha_reduce(
     const std::unique_ptr<const Variable> from,
@@ -74,9 +93,12 @@ namespace lambda {
 
 
   Abstraction::Abstraction(
-    std::unique_ptr<Variable> variable,
+    std::unique_ptr<Variable> binder,
     std::unique_ptr<Expression> body
-  ): binder(std::move(variable)), body(std::move(body)) {}
+  ): binder(std::move(binder)), body(std::move(body)) {
+    free_variables = this->body->get_free_variables();
+    free_variables.erase(this->binder->get_literal());
+  }
 
   auto Abstraction::alpha_reduce(
     const std::unique_ptr<const Variable> from,
@@ -161,7 +183,9 @@ namespace lambda {
   Application::Application(
     std::unique_ptr<Expression> first,
     std::unique_ptr<Expression> second
-  ): first(std::move(first)), second(std::move(second)) {}
+  ): first(std::move(first)), second(std::move(second)) {
+    free_variables = this->first->get_free_variables() + this->second->get_free_variables();
+  }
 
   auto Application::alpha_reduce(
     const std::unique_ptr<const Variable> from,
