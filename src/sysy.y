@@ -12,22 +12,7 @@
 %{
   #include "lambda.h"
 
-  #include <stack>
-
   lambda::Reducer reducer;
-
-  extern FILE* yyin;
-  extern std::stack<FILE*> include_file_stack;
-  extern std::stack<std::string> include_path_stack;
-  
-  static std::string get_folder(std::string path) {
-    while(
-      !path.empty() && path.back() != '\\' && path.back() != '/'
-    ) {
-      path.pop_back();
-    }
-    return path;
-  }
 %}
 
 %union {
@@ -36,8 +21,8 @@
   lambda::Variable*   LambdaVariable;
 }
 
-%token  <String> TK_IDENTIFIER TK_NUMBER TK_PATH
-%token  TK_DEFINE TK_IMPORT
+%token  <String> TK_IDENTIFIER TK_NUMBER
+%token  TK_DEFINE
 
 %type <LambdaExpression> expression abstraction application atomic
 %type <LambdaVariable> variable
@@ -56,20 +41,6 @@ commands
 command
   : definition
   | solution
-  | import
-;
-
-import
-  : TK_IMPORT TK_PATH {
-    std::string path = get_folder(include_path_stack.top()) + $2; 
-
-    FILE* in = fopen(path.c_str(), "r");
-    if (in == nullptr) { throw std::runtime_error("cannot find file"); }
-
-    include_file_stack.push(yyin);
-    include_path_stack.push(path);
-    yyin = in;
-  }
 ;
 
 definition

@@ -16,6 +16,15 @@
 
   std::stack<FILE*> include_file_stack;
   std::stack<std::string> include_path_stack;
+
+  static std::string get_folder(std::string path) {
+    while(
+      !path.empty() && path.back() != '\\' && path.back() != '/'
+    ) {
+      path.pop_back();
+    }
+    return path;
+  }
 %}
 
 WhiteSpace      [ \n\r\t]
@@ -27,11 +36,20 @@ Path            [^:*?"<>|\n\r]+
 %x  PATH_STATE
 
 %%
-"import"              { BEGIN(IMPORT_STATE); return TK_IMPORT; }
+"import"              { BEGIN(IMPORT_STATE); }
 <IMPORT_STATE>{WhiteSpace}
 <IMPORT_STATE>\"      { BEGIN(PATH_STATE); }
 <PATH_STATE>\"        { BEGIN(INITIAL); }
-<PATH_STATE>{Path}    { strcpy(yylval.String, yytext); return TK_PATH; }
+<PATH_STATE>{Path}    { 
+  std::string path = get_folder(include_path_stack.top()) + yytext; 
+
+  FILE* in = fopen(path.c_str(), "r");
+  if (in == nullptr) { throw std::runtime_error("cannot find file"); }
+
+  include_file_stack.push(yyin);
+  include_path_stack.push(path);
+  yyin = in;
+}
 <PATH_STATE>{WhiteSpace}
 <PATH_STATE>.         { return yytext[0]; }
 
