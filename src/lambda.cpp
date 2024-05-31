@@ -14,6 +14,14 @@ namespace lambda {
   bool Variable::operator==(const Variable& right) const { return literal == right.literal; }
   bool Variable::operator==(const Variable&& right) const { return literal == right.literal; }
 
+  auto Variable::alpha_reduce(
+    const std::unique_ptr<const Variable> from,
+    const std::unique_ptr<const Variable> to
+  ) const -> std::unique_ptr<Expression> {
+    if (*from == *this) { return to->clone(); }
+    else { return this->clone(); }
+  }
+
   auto Variable::beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> {
     return std::make_tuple(this->clone(), false);
   }
@@ -69,6 +77,19 @@ namespace lambda {
     std::unique_ptr<Variable> variable,
     std::unique_ptr<Expression> body
   ): binder(std::move(variable)), body(std::move(body)) {}
+
+  auto Abstraction::alpha_reduce(
+    const std::unique_ptr<const Variable> from,
+    const std::unique_ptr<const Variable> to
+  ) const -> std::unique_ptr<Expression> {
+    if (*from == *binder) { return this->clone(); }
+    else { 
+      return std::make_unique<Abstraction>(
+        to->clone_variable(), 
+        body->alpha_reduce(from->clone_variable(), to->clone_variable())
+      ); 
+    }
+  }
 
   auto Abstraction::beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> {
     auto [body, is_changed] = this->body->beta_reduce();
@@ -136,10 +157,21 @@ namespace lambda {
     return std::make_unique<Abstraction>(binder->clone_variable(), body->clone());
   }
 
+
   Application::Application(
     std::unique_ptr<Expression> first,
     std::unique_ptr<Expression> second
   ): first(std::move(first)), second(std::move(second)) {}
+
+  auto Application::alpha_reduce(
+    const std::unique_ptr<const Variable> from,
+    const std::unique_ptr<const Variable> to
+  ) const -> std::unique_ptr<Expression> {
+    return std::make_unique<Application>(
+      first->alpha_reduce(from->clone_variable(), to->clone_variable()),
+      second->alpha_reduce(from->clone_variable(), to->clone_variable())
+    );
+  }
 
   auto Application::beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> {
     {
@@ -277,7 +309,7 @@ namespace lambda {
 
         if (is_changed) { 
           is_changed_global = true;
-          result_string += "beta>\t" + expr->to_string() + "\n";
+          result_string += "beta>  " + expr->to_string() + "\n";
           continue; 
         }
       }
@@ -288,7 +320,7 @@ namespace lambda {
 
         if (is_changed) { 
           is_changed_global = true;
-          result_string += "delta>\t" + expr->to_string() + "\n";
+          result_string += "delta> " + expr->to_string() + "\n";
           continue; 
         }
       }

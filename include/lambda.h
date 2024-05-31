@@ -17,6 +17,11 @@ namespace lambda {
   class Variable;
   class Expression {
   public:
+    virtual auto alpha_reduce(
+      const std::unique_ptr<const Variable> from,
+      const std::unique_ptr<const Variable> to
+    ) const -> std::unique_ptr<Expression> = 0;
+
     virtual auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
 
     virtual auto replace(
@@ -53,6 +58,11 @@ namespace lambda {
 
     bool operator==(const Variable& right) const;
     bool operator==(const Variable&& right) const;
+
+    auto alpha_reduce(
+      const std::unique_ptr<const Variable> from,
+      const std::unique_ptr<const Variable> to
+    ) const -> std::unique_ptr<Expression> override;
 
     auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
@@ -93,6 +103,11 @@ namespace lambda {
     Abstraction& operator=(Abstraction& other) = delete;
     Abstraction& operator=(Abstraction&& other) = default;
 
+    auto alpha_reduce(
+      const std::unique_ptr<const Variable> from,
+      const std::unique_ptr<const Variable> to
+    ) const -> std::unique_ptr<Expression> override;
+
     auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto replace(
@@ -131,6 +146,11 @@ namespace lambda {
     Application(Application&& other) = default;
     Application& operator=(Application& other) = delete;
     Application& operator=(Application&& other) = default;
+
+    auto alpha_reduce(
+      const std::unique_ptr<const Variable> from,
+      const std::unique_ptr<const Variable> to
+    ) const -> std::unique_ptr<Expression> override;
 
     auto beta_reduce() const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
