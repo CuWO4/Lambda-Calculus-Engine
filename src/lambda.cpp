@@ -1,5 +1,8 @@
 #include "lambda.h"
 
+#include <ctime>
+#include <functional>
+
 namespace lambda {
 
   static auto build_indent(int indent) { 
@@ -40,8 +43,8 @@ namespace lambda {
     return free_variables;
   }
 
-  bool Expression::is_computational_priority() const {
-    return computational_priority_flag;
+  bool Expression::get_computational_priority() const { 
+    return computational_priority_flag; 
   }
 
   void Expression::set_computational_priority(bool computational_priority) {
@@ -108,7 +111,9 @@ namespace lambda {
     );
   }
 
-  auto Variable::to_string() const -> std::string { return literal; }
+  auto Variable::to_string() const -> std::string { 
+    return literal; 
+  }
 
   auto Variable::debug(int indent) const -> std::string { return build_indent(indent) + literal; }
 
@@ -141,8 +146,10 @@ namespace lambda {
     return this->clone_variable(new_computational_priority);
   }
 
-  bool Variable::is_computational_priority() const {
-    return computational_priority_flag;
+  bool Variable::is_computational_priority(
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const {
+    return !has(bound_variables, literal) && computational_priority_flag;
   }
 
 
@@ -257,9 +264,11 @@ namespace lambda {
   }
 
   auto Abstraction::to_string() const -> std::string {
-    return "\\" + binder->to_string() 
+    return 
+      "\\" + binder->to_string() 
       + "." + (body->get_priority() > Priority::Abstraction ? " " : "") 
-      + body->to_string();
+      + body->to_string()
+    ;
   }
 
   auto Abstraction::debug(int indent) const -> std::string {
@@ -294,10 +303,13 @@ namespace lambda {
     );
   }
 
-  bool Abstraction::is_computational_priority() const {
-    return computational_priority_flag 
-      || body->is_computational_priority()
-    ;
+  bool Abstraction::is_computational_priority(
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const {
+    for(auto free_variable: free_variables) {
+      if (has(bound_variables, free_variable)) { return false; }
+    }
+    return computational_priority_flag;
   }
 
 
@@ -315,10 +327,10 @@ namespace lambda {
     std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
     std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
-    if (first->is_computational_priority()) {
+    if (first->is_computational_priority(std::move(bound_variables))) {
       auto [new_first, reduce_type] = first->reduce(symbol_table, std::move(bound_variables));
       if ((bool)reduce_type) {
-        new_first->set_computational_priority(first->is_computational_priority());
+        new_first->set_computational_priority(first->get_computational_priority());
         return std::make_tuple(
           std::make_unique<Application>(
             std::move(new_first),
@@ -329,10 +341,10 @@ namespace lambda {
         );
       } 
     }
-    else if (second->is_computational_priority()) {
+    else if (second->is_computational_priority(std::move(bound_variables))) {
       auto [new_second, reduce_type] = second->reduce(symbol_table, std::move(bound_variables));
       if ((bool)reduce_type) {
-        new_second->set_computational_priority(second->is_computational_priority());
+        new_second->set_computational_priority(second->get_computational_priority());
         return std::make_tuple(
           std::make_unique<Application>(
             first->clone(),
@@ -353,7 +365,7 @@ namespace lambda {
     {
       auto [new_first, reduce_type] = first->reduce(symbol_table, std::move(bound_variables));
       if ((bool)reduce_type) {
-        new_first->set_computational_priority(first->is_computational_priority());
+        new_first->set_computational_priority(first->get_computational_priority());
         return std::make_tuple(
           std::make_unique<Application>(
             std::move(new_first),
@@ -367,7 +379,7 @@ namespace lambda {
     {
       auto [new_second, reduce_type] = second->reduce(symbol_table, std::move(bound_variables));
       if ((bool)reduce_type) {
-        new_second->set_computational_priority(second->is_computational_priority());
+        new_second->set_computational_priority(second->get_computational_priority());
         return std::make_tuple(
           std::make_unique<Application>(
             first->clone(),
@@ -446,12 +458,16 @@ namespace lambda {
   auto Application::to_string() const -> std::string {
     auto result = std::string("");
 
-    if (first->get_priority() < get_priority()) { result += "(" + first->to_string() + ")"; }
+    if (first->get_priority() < get_priority()) { 
+      result += "(" + first->to_string() + ")"; 
+    }
     else { result += first->to_string(); }
 
     result += " ";
 
-    if (second->get_priority() <= get_priority()) { result += "(" + second->to_string() + ")"; }
+    if (second->get_priority() <= get_priority()) { 
+      result += "(" + second->to_string() + ")"; 
+    }
     else { result += second->to_string(); }
 
     return result;
@@ -489,10 +505,12 @@ namespace lambda {
     );
   }
 
-  bool Application::is_computational_priority() const {
+  bool Application::is_computational_priority(
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const {
     return computational_priority_flag 
-      || first->is_computational_priority()
-      || second->is_computational_priority()
+      || first->is_computational_priority(std::move(bound_variables))
+      || second->is_computational_priority(std::move(bound_variables))
     ;
   }
 
@@ -523,24 +541,44 @@ namespace lambda {
     else /* reduce_type == ReduceType::NoReduce */ { return ""; }
   }
 
+  clock_t msec_count(std::function<void(void)> func) {
+    auto start_time = clock();
+    func();
+    auto end_time = clock();
+    return (end_time - start_time) / (double)CLOCKS_PER_SEC * 1000;
+  }
+
   auto Reducer::reduce(
      std::unique_ptr<Expression> expression
   ) -> std::tuple<std::string, std::unique_ptr<Expression>> {
 
     auto result_string = expression->to_string() + "\n";
-    auto expr = std::move(expression);
+    auto expr = expression->clone();
 
-    while (true) {
-      auto [new_expr, reduce_type] = expr->reduce(symbol_table, {});
+    unsigned long long step;
 
-      if (reduce_type == ReduceType::NoReduce) { break; }
+    auto msec = msec_count(
+      [&]() {
+        for (step = 0;; step++) {
+          auto [new_expr, reduce_type] = expr->reduce(symbol_table, {});
 
-      result_string += reduce_type_to_header(reduce_type) + new_expr->to_string() + "\n";
-      expr = std::move(new_expr);
-    }
+          if (reduce_type == ReduceType::NoReduce) { break; }
+
+          result_string += reduce_type_to_header(reduce_type) + new_expr->to_string() + "\n";
+          expr = std::move(new_expr);
+        }
+      }
+    );
+
+    result_string += "\nto be sought:    " + expression->to_string() + "\n"
+                  +    "result:          " + expr->to_string() + "\n"
+                  +    "step taken:      " + std::to_string(step) + "\n"
+                  +    "character count: " + std::to_string(result_string.length()) + "\n"
+                  +    "time cost:       " + std::to_string(msec) + "ms" +"\n";
     
     return std::make_tuple(result_string, std::move(expr));
   }
+
 
   void Reducer::register_symbol(
     std::string literal, 

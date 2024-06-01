@@ -81,6 +81,10 @@ application
 atomic
   : variable            { $$ = $1; }
   | '(' abstraction ')' { $$ = $2; }
+  | '{' abstraction '}' { 
+    $$ = $2; 
+    $$->set_computational_priority(true);
+  }
 ;
 
 variable

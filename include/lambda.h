@@ -56,7 +56,10 @@ namespace lambda {
 
     auto get_free_variables() const -> std::unordered_set<std::string> const&;
 
-    virtual bool is_computational_priority() const = 0;
+    bool get_computational_priority() const;
+    virtual bool is_computational_priority(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const = 0;
     void set_computational_priority(bool computational_priority);
 
   protected:
@@ -111,7 +114,9 @@ namespace lambda {
       bool new_computational_priority
     ) const -> std::unique_ptr<Expression> override;
 
-    bool is_computational_priority() const override;
+    bool is_computational_priority(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const override;
 
   private:
     std::string literal;
@@ -160,7 +165,9 @@ namespace lambda {
       bool new_computational_priority
     ) const -> std::unique_ptr<Expression> override;
 
-    bool is_computational_priority() const override;
+    bool is_computational_priority(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const override;
 
   private:
     std::unique_ptr<Variable> binder;
@@ -206,7 +213,9 @@ namespace lambda {
       bool new_computational_priority
     ) const -> std::unique_ptr<Expression> override;
 
-    bool is_computational_priority() const override;
+    bool is_computational_priority(
+      std::unordered_multiset<std::string>&& bound_variables
+    ) const override;
 
   private:
     std::unique_ptr<Expression> first;

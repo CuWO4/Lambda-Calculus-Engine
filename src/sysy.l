@@ -29,7 +29,7 @@
 
 WhiteSpace      [ \n\r\t]
 LineComment     "//".*
-Identifier      [^0-9 \n\r\t\\@#.():][^ \n\r\t\\@#.:()]*
+Identifier      [^0-9 \n\r\t\\@#.(){}:][^ \n\r\t\\@#.:(){}]*
 Number          [0-9]+
 Path            [^:*?"<>|\n\r]+
 
