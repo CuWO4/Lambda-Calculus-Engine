@@ -40,8 +40,12 @@ namespace lambda {
     free_variables = { literal };
   }
 
-  bool Variable::operator==(const Variable& right) const { return literal == right.literal; }
-  bool Variable::operator==(const Variable&& right) const { return literal == right.literal; }
+  bool Variable::operator==(const Variable& right) const { 
+    return literal == right.literal; 
+  }
+  bool Variable::operator==(const Variable&& right) const { 
+    return literal == right.literal; 
+  }
 
   auto Variable::get_literal() -> std::string const& { return literal; }
 
@@ -72,8 +76,13 @@ namespace lambda {
   }
 
   auto Variable::delta_reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+    std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
+    if (bound_variables.count(literal) > 0) {
+      return std::make_tuple(this->clone(), false);
+    }
+
     if (symbol_table.find(literal) != symbol_table.end()) {
       return std::make_tuple(
         symbol_table.find(literal)->second->clone(),
@@ -189,9 +198,17 @@ namespace lambda {
   }
 
   auto Abstraction::delta_reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+    std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    auto [body, is_changed] = this->body->delta_reduce(symbol_table);
+
+    bound_variables.emplace(binder->get_literal());
+    auto [body, is_changed] = this->body->delta_reduce(
+      symbol_table,
+      std::move(bound_variables)
+    );
+    bound_variables.erase(bound_variables.find(binder->get_literal()));
+
     return std::make_tuple(
       std::make_unique<Abstraction>(this->binder->clone_variable(), std::move(body)),
       is_changed
@@ -290,16 +307,23 @@ namespace lambda {
   }
 
   auto Application::delta_reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+    std::unordered_multiset<std::string>&& bound_variables
   ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
     {
-      auto [first, is_changed] = this->first->delta_reduce(symbol_table);
+      auto [first, is_changed] = this->first->delta_reduce(
+        symbol_table,
+        std::move(bound_variables)
+      );
       if (is_changed) {
         return std::make_tuple(std::make_unique<Application>(std::move(first), second->clone()), true);
       }
     }
     {
-      auto [second, is_changed] = this->second->delta_reduce(symbol_table);
+      auto [second, is_changed] = this->second->delta_reduce(
+        symbol_table,
+        std::move(bound_variables)
+      );
       if (is_changed) {
         return std::make_tuple(std::make_unique<Application>(first->clone(), std::move(second)), true);
       }
@@ -383,7 +407,7 @@ namespace lambda {
       }
 
       {
-        auto [new_expr, is_changed] = expr->delta_reduce(symbol_table);
+        auto [new_expr, is_changed] = expr->delta_reduce(symbol_table, {});
         expr = std::move(new_expr);
 
         if (is_changed) { 

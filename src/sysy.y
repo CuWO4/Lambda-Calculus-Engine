@@ -59,7 +59,7 @@ solution
 expression: abstraction ;
 
 abstraction
-  : '\\' variable '.' abstraction {
+  : '\\' variable '.' expression {
     $$ = new lambda::Abstraction(
       std::unique_ptr<lambda::Variable>($2),
       std::unique_ptr<lambda::Expression>($4)

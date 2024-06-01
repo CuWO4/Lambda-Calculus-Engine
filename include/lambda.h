@@ -34,7 +34,8 @@ namespace lambda {
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
 
     virtual auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
 
     virtual auto to_string() const -> std::string = 0;
@@ -82,7 +83,8 @@ namespace lambda {
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto to_string() const -> std::string override;
@@ -129,7 +131,8 @@ namespace lambda {
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto to_string() const -> std::string override;
@@ -172,7 +175,8 @@ namespace lambda {
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_multiset<std::string>&& bound_variables
     ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
 
     auto to_string() const -> std::string override;
