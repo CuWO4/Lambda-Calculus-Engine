@@ -9,6 +9,13 @@
 
 namespace lambda {
 
+  enum class ReduceType {
+    NoReduce = 0,
+    AlphaReduce = 1,
+    BetaReduce = 2,
+    DeltaReduce = 3
+  };
+
   enum class Priority {
     Abstraction = 0,
     Application = 1,
@@ -18,25 +25,22 @@ namespace lambda {
   class Variable;
   class Expression {
   public:
-    virtual auto beta_reduce(
+    // beta and delta reduce
+    virtual auto reduce(
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> = 0;
 
     virtual auto replace(
       const std::unique_ptr<const Variable> variable,
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> = 0;
 
     virtual auto apply(
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
-
-    virtual auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> = 0;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> = 0;
 
     virtual auto to_string() const -> std::string = 0;
     virtual auto debug(int indent) const -> std::string = 0;
@@ -44,18 +48,28 @@ namespace lambda {
     virtual auto get_priority() const -> Priority = 0;
 
     virtual auto clone() const -> std::unique_ptr<Expression> = 0;
+    virtual auto clone(
+      bool new_computational_priority
+    ) const -> std::unique_ptr<Expression> = 0;
 
     virtual ~Expression() = default;
 
     auto get_free_variables() const -> std::unordered_set<std::string> const&;
 
+    virtual bool is_computational_priority() const = 0;
+    void set_computational_priority(bool computational_priority);
+
   protected:
+    bool computational_priority_flag;
     std::unordered_set<std::string> free_variables;
   };
 
   class Variable: public Expression {
   public:
-    Variable(std::string literal);
+    Variable(
+      std::string literal, 
+      bool computational_priority = false
+    );
 
     Variable(Variable& other) = delete;
     Variable(Variable&& other) = default;
@@ -67,33 +81,37 @@ namespace lambda {
 
     auto get_literal() -> std::string const&;
 
-    auto beta_reduce(
+    auto reduce(
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto replace(
       const std::unique_ptr<const Variable> variable,
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto apply(
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
-
-    auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto to_string() const -> std::string override;
     auto debug(int indent) const -> std::string override;
 
     auto get_priority() const -> Priority override;
 
-    auto clone_variable() const -> std::unique_ptr<Variable>;
+    auto clone_variable() const -> std::unique_ptr<Variable>; 
+    auto clone_variable(
+      bool new_computational_priority
+    ) const -> std::unique_ptr<Variable>;
     auto clone() const -> std::unique_ptr<Expression> override;
+    auto clone(
+      bool new_computational_priority
+    ) const -> std::unique_ptr<Expression> override;
+
+    bool is_computational_priority() const override;
 
   private:
     std::string literal;
@@ -103,7 +121,8 @@ namespace lambda {
   public:
     Abstraction(
       std::unique_ptr<Variable> binder,
-      std::unique_ptr<Expression> body
+      std::unique_ptr<Expression> body,
+      bool computational_priority = false
     );
 
     Abstraction(Abstraction& other) = delete;
@@ -115,25 +134,21 @@ namespace lambda {
       const std::unique_ptr<const Variable> to
     ) const -> std::unique_ptr<Expression>;
 
-    auto beta_reduce(
+    auto reduce(
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto replace(
       const std::unique_ptr<const Variable> variable,
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto apply(
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
-
-    auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto to_string() const -> std::string override;
     auto debug(int indent) const -> std::string override;
@@ -141,6 +156,11 @@ namespace lambda {
     auto get_priority() const -> Priority override;
 
     auto clone() const -> std::unique_ptr<Expression> override;
+    auto clone(
+      bool new_computational_priority
+    ) const -> std::unique_ptr<Expression> override;
+
+    bool is_computational_priority() const override;
 
   private:
     std::unique_ptr<Variable> binder;
@@ -151,7 +171,8 @@ namespace lambda {
   public:
     Application(
       std::unique_ptr<Expression> first,
-      std::unique_ptr<Expression> second
+      std::unique_ptr<Expression> second,
+      bool computational_priority = false
     );
 
     Application(Application& other) = delete;
@@ -159,25 +180,21 @@ namespace lambda {
     Application& operator=(Application& other) = delete;
     Application& operator=(Application&& other) = default;
 
-    auto beta_reduce(
+    auto reduce(
+      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto replace(
       const std::unique_ptr<const Variable> variable,
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto apply(
       const std::unique_ptr<const Expression> expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
-
-    auto delta_reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, bool> override;
+    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
 
     auto to_string() const -> std::string override;
     auto debug(int indent) const -> std::string override;
@@ -185,6 +202,11 @@ namespace lambda {
     auto get_priority() const -> Priority override;
 
     auto clone() const -> std::unique_ptr<Expression> override;
+    auto clone(
+      bool new_computational_priority
+    ) const -> std::unique_ptr<Expression> override;
+
+    bool is_computational_priority() const override;
 
   private:
     std::unique_ptr<Expression> first;

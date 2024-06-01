@@ -18,6 +18,11 @@ namespace lambda {
     return result;
   }
 
+  template <template<typename...> typename Container, typename T, typename... Ts>
+  static bool has(const Container<T, Ts...>& container, const T& element) {
+    return container.count(element) > 0;    
+  }
+
   static auto index_to_string(unsigned index) -> std::string {
     constexpr unsigned LETTER_N = 26;
     auto result = std::string("");
@@ -35,9 +40,18 @@ namespace lambda {
     return free_variables;
   }
 
+  bool Expression::is_computational_priority() const {
+    return computational_priority_flag;
+  }
 
-  Variable::Variable(std::string literal): literal(literal) {
+  void Expression::set_computational_priority(bool computational_priority) {
+    computational_priority_flag = computational_priority;
+  }
+
+
+  Variable::Variable(std::string literal, bool computational_priority): literal(literal) {
     free_variables = { literal };
+    computational_priority_flag = computational_priority;
   }
 
   bool Variable::operator==(const Variable& right) const { 
@@ -49,47 +63,49 @@ namespace lambda {
 
   auto Variable::get_literal() -> std::string const& { return literal; }
 
-  auto Variable::beta_reduce(
+  auto Variable::reduce(
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    return std::make_tuple(this->clone(), false);
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+    if (!has(bound_variables, literal) && has(symbol_table, literal)) {
+      return std::make_tuple(
+        symbol_table.find(literal)->second->clone(this->computational_priority_flag),
+        ReduceType::DeltaReduce
+      );
+    }
+
+    return std::make_tuple(
+      this->clone(false),
+      ReduceType::NoReduce
+    );
   }
 
   auto Variable::replace(
-      const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression,
-      std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    if (*variable == *this) {
-      return std::make_tuple(expression->clone(), true);
+    const std::unique_ptr<const Variable> variable,
+    const std::unique_ptr<const Expression> expression,
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+    if (*this == *variable) {
+      return std::make_tuple(
+        expression->clone(this->computational_priority_flag),
+        ReduceType::BetaReduce
+      );
     }
-    else {
-      return std::make_tuple(this->clone(), false);
-    }
+    
+    return std::make_tuple(
+      this->clone(),
+      ReduceType::NoReduce
+    );
   }
 
   auto Variable::apply(
     const std::unique_ptr<const Expression> expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    return std::make_tuple(this->clone(), false);
-  }
-
-  auto Variable::delta_reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
-    std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    if (bound_variables.count(literal) > 0) {
-      return std::make_tuple(this->clone(), false);
-    }
-
-    if (symbol_table.find(literal) != symbol_table.end()) {
-      return std::make_tuple(
-        symbol_table.find(literal)->second->clone(),
-        true
-      );
-    }
-    else { return std::make_tuple(this->clone(), false); }
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {  
+    return std::make_tuple(
+      this->clone(),
+      ReduceType::NoReduce
+    );
   }
 
   auto Variable::to_string() const -> std::string { return literal; }
@@ -101,64 +117,97 @@ namespace lambda {
   }
 
   auto Variable::clone_variable() const -> std::unique_ptr<Variable> {
-    return std::make_unique<Variable>(literal);
+    return std::make_unique<Variable>(
+      literal, 
+      computational_priority_flag
+    );
+  }
+
+  auto Variable::clone_variable(
+    bool new_computational_priority
+  ) const -> std::unique_ptr<Variable> {
+    return std::make_unique<Variable>(
+      literal, 
+      new_computational_priority
+    );
   }
 
   auto Variable::clone() const -> std::unique_ptr<Expression> {
     return this->clone_variable();
   }
+  auto Variable::clone(
+    bool new_computational_priority
+  ) const -> std::unique_ptr<Expression> {
+    return this->clone_variable(new_computational_priority);
+  }
+
+  bool Variable::is_computational_priority() const {
+    return computational_priority_flag;
+  }
 
 
   Abstraction::Abstraction(
     std::unique_ptr<Variable> binder,
-    std::unique_ptr<Expression> body
+    std::unique_ptr<Expression> body,
+    bool computational_priority
   ): binder(std::move(binder)), body(std::move(body)) {
     free_variables = this->body->get_free_variables();
     free_variables.erase(this->binder->get_literal());
+    computational_priority_flag = computational_priority;
   }
 
   auto Abstraction::alpha_reduce(
     const std::unique_ptr<const Variable> to
   ) const -> std::unique_ptr<Expression> {
-    auto [body, is_changed] = this->body->replace(
-      binder->clone_variable(), 
-      to->clone_variable(), 
-      {} // no bother checking (and should not check)
-    );
     return std::make_unique<Abstraction>(
-      to->clone_variable(), 
-      std::move(body)
-    ); 
+      to->clone_variable(),
+      std::get<0>(
+        body->replace(
+          binder->clone_variable(), 
+          to->clone_variable(), 
+          {} // do not care and should not care
+        )
+      ),
+      computational_priority_flag
+    );
   }
 
-  auto Abstraction::beta_reduce(
+  auto Abstraction::reduce(
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
     bound_variables.emplace(binder->get_literal());
-    auto [body, is_changed] = this->body->beta_reduce(std::move(bound_variables));
+    auto [new_body, reduce_type] = body->reduce(symbol_table, std::move(bound_variables));
     bound_variables.erase(bound_variables.find(binder->get_literal()));
-    
+
     return std::make_tuple(
-      std::make_unique<Abstraction>(binder->clone_variable(), std::move(body)),
-      is_changed
+      std::make_unique<Abstraction>(
+        binder->clone_variable(),
+        std::move(new_body),
+        (bool)reduce_type && computational_priority_flag
+      ),
+      reduce_type
     );
   }
 
   auto Abstraction::replace(
-      const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression,
-      std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    if (*this->binder == *variable) {
-      return std::make_tuple(this->clone(), false);
+    const std::unique_ptr<const Variable> variable,
+    const std::unique_ptr<const Expression> expression,
+    std::unordered_multiset<std::string>&& bound_variables
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+    if (*variable == *binder) {
+      return std::make_tuple(
+        this->clone(),
+        ReduceType::NoReduce
+      );
     }
 
-    if (expression->get_free_variables().count(binder->get_literal()) > 0) {
+    if (has(expression->get_free_variables(), binder->get_literal())) {
       for (int i = 0;; i++) {
-        auto new_binder_literal = index_to_string(i);
-        if (bound_variables.count(new_binder_literal) == 0) {
+        std::string new_literal = index_to_string(i);
+        if (!has(bound_variables, new_literal)) {
           return this->alpha_reduce(
-            std::make_unique<Variable>(new_binder_literal)
+            std::make_unique<Variable>(new_literal)
           )->replace(
             variable->clone_variable(), 
             expression->clone(), 
@@ -169,54 +218,48 @@ namespace lambda {
     }
 
     bound_variables.emplace(binder->get_literal());
-    auto [body, is_changed] = this->body->replace(
-      variable->clone_variable(),
+    auto [new_body, reduce_type] = body->replace(
+      variable->clone_variable(), 
       expression->clone(),
       std::move(bound_variables)
     );
     bound_variables.erase(bound_variables.find(binder->get_literal()));
 
     return std::make_tuple(
-      std::make_unique<Abstraction>(this->binder->clone_variable(), std::move(body)),
-      is_changed
+      std::make_unique<Abstraction>(
+        binder->clone_variable(),
+        std::move(new_body),
+        computational_priority_flag
+      ),
+      reduce_type
     );
   }
 
   auto Abstraction::apply(
     const std::unique_ptr<const Expression> expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
     bound_variables.emplace(binder->get_literal());
-    auto [body, is_changed] = this->body->replace(
-      binder->clone_variable(), 
-      expression->clone(),
-      std::move(bound_variables)
+    auto result = std::get<0>(
+      body->replace(
+        binder->clone_variable(), 
+        expression->clone(), 
+        std::move(bound_variables)
+      )
     );
-    bound_variables.erase(bound_variables.find(binder->get_literal()));
-
-    return std::make_tuple(std::move(body), true);
-  }
-
-  auto Abstraction::delta_reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
-    std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-
-    bound_variables.emplace(binder->get_literal());
-    auto [body, is_changed] = this->body->delta_reduce(
-      symbol_table,
-      std::move(bound_variables)
-    );
+    result->set_computational_priority(computational_priority_flag);
     bound_variables.erase(bound_variables.find(binder->get_literal()));
 
     return std::make_tuple(
-      std::make_unique<Abstraction>(this->binder->clone_variable(), std::move(body)),
-      is_changed
+      std::move(result),
+      ReduceType::BetaReduce
     );
   }
 
   auto Abstraction::to_string() const -> std::string {
-    return "\\" + binder->to_string() + "." + body->to_string();
+    return "\\" + binder->to_string() 
+      + "." + (body->get_priority() > Priority::Abstraction ? " " : "") 
+      + body->to_string();
   }
 
   auto Abstraction::debug(int indent) const -> std::string {
@@ -235,100 +278,169 @@ namespace lambda {
   }
 
   auto Abstraction::clone() const -> std::unique_ptr<Expression> {
-    return std::make_unique<Abstraction>(binder->clone_variable(), body->clone());
+    return std::make_unique<Abstraction>(
+      binder->clone_variable(), 
+      body->clone(), 
+      computational_priority_flag
+    );
+  }
+  auto Abstraction::clone(
+    bool new_computational_priority
+  ) const -> std::unique_ptr<Expression> {
+    return std::make_unique<Abstraction>(
+      binder->clone_variable(), 
+      body->clone(), 
+      new_computational_priority
+    );
+  }
+
+  bool Abstraction::is_computational_priority() const {
+    return computational_priority_flag 
+      || body->is_computational_priority()
+    ;
   }
 
 
   Application::Application(
     std::unique_ptr<Expression> first,
-    std::unique_ptr<Expression> second
+    std::unique_ptr<Expression> second,
+    bool computational_priority
   ): first(std::move(first)), second(std::move(second)) {
-    free_variables = this->first->get_free_variables() + this->second->get_free_variables();
+    free_variables = this->first->get_free_variables() 
+      + this->second->get_free_variables();
+    computational_priority_flag = computational_priority;
   }
 
-  auto Application::beta_reduce(
+  auto Application::reduce(
+    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    {
-      auto [result, is_changed] = first->apply(second->clone(), std::move(bound_variables));
-      if (is_changed) { return std::make_tuple(std::move(result), true); }
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+    if (first->is_computational_priority()) {
+      auto [new_first, reduce_type] = first->reduce(symbol_table, std::move(bound_variables));
+      if ((bool)reduce_type) {
+        new_first->set_computational_priority(first->is_computational_priority());
+        return std::make_tuple(
+          std::make_unique<Application>(
+            std::move(new_first),
+            second->clone(),
+            computational_priority_flag
+          ),
+          reduce_type
+        );
+      } 
+    }
+    else if (second->is_computational_priority()) {
+      auto [new_second, reduce_type] = second->reduce(symbol_table, std::move(bound_variables));
+      if ((bool)reduce_type) {
+        new_second->set_computational_priority(second->is_computational_priority());
+        return std::make_tuple(
+          std::make_unique<Application>(
+            first->clone(),
+            std::move(new_second),
+            computational_priority_flag
+          ),
+          reduce_type
+        );
+      } 
     }
     {
-      auto [first, is_changed] = this->first->beta_reduce(std::move(bound_variables));
-      if (is_changed) {
-        return std::make_tuple(std::make_unique<Application>(first->clone(), second->clone()), true);
+      auto [new_expression, reduce_type] = first->apply(second->clone(), std::move(bound_variables));
+      if ((bool)reduce_type) {
+        new_expression->set_computational_priority(computational_priority_flag);
+        return std::make_tuple(std::move(new_expression), reduce_type);
       }
     }
     {
-      auto [second, is_changed] = this->second->beta_reduce(std::move(bound_variables));
-      if (is_changed) {
-        return std::make_tuple(std::make_unique<Application>(first->clone(), second->clone()), true);
-      }
-    }
-    return std::make_tuple(this->clone(), false);
-  }
-
-  auto Application::replace(
-      const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression,
-      std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    std::unique_ptr<Expression> first_result, second_result;
-    bool is_changed_result = false;
-    {
-      auto [first, is_changed] = this->first->replace(
-        variable->clone_variable(), 
-        expression->clone(),
-        std::move(bound_variables)
-      );
-      first_result = std::move(first);
-      is_changed_result |= is_changed;
+      auto [new_first, reduce_type] = first->reduce(symbol_table, std::move(bound_variables));
+      if ((bool)reduce_type) {
+        new_first->set_computational_priority(first->is_computational_priority());
+        return std::make_tuple(
+          std::make_unique<Application>(
+            std::move(new_first),
+            second->clone(),
+            computational_priority_flag
+          ),
+          reduce_type
+        );
+      } 
     }
     {
-      auto [second, is_changed] = this->second->replace(
-        variable->clone_variable(), 
-        expression->clone(),
-        std::move(bound_variables)
-      );
-      second_result = std::move(second);
-      is_changed_result |= is_changed;
+      auto [new_second, reduce_type] = second->reduce(symbol_table, std::move(bound_variables));
+      if ((bool)reduce_type) {
+        new_second->set_computational_priority(second->is_computational_priority());
+        return std::make_tuple(
+          std::make_unique<Application>(
+            first->clone(),
+            std::move(new_second),
+            computational_priority_flag
+          ),
+          reduce_type
+        );
+      } 
     }
     return std::make_tuple(
-      std::make_unique<Application>(std::move(first_result), std::move(second_result)), 
-      is_changed_result
+      this->clone(false),
+      ReduceType::NoReduce
     );
   }
 
-  auto Application::apply (
+  auto Application::replace(
+    const std::unique_ptr<const Variable> variable,
     const std::unique_ptr<const Expression> expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    return std::make_tuple(this->clone(), false);
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+    auto [new_first, first_reduce_type] = first->replace(
+      variable->clone_variable(), 
+      expression->clone(), 
+      std::move(bound_variables)
+    );
+    if (first_reduce_type == ReduceType::AlphaReduce) {
+      return std::make_tuple(
+        std::make_unique<Application>(
+          std::move(new_first),
+          second->clone(),
+          computational_priority_flag
+        ),
+        first_reduce_type
+      );
+    }
+
+    auto [new_second, second_reduce_type] = second->replace(
+      variable->clone_variable(), 
+      expression->clone(), 
+      std::move(bound_variables)
+    );
+    if (second_reduce_type == ReduceType::AlphaReduce) {
+      return std::make_tuple(
+        std::make_unique<Application>(
+          first->clone(),
+          std::move(new_second),
+          computational_priority_flag
+        ),
+        second_reduce_type
+      );
+    }
+
+    return std::make_tuple(
+      std::make_unique<Application>(
+        std::move(new_first),
+        std::move(new_second),
+        computational_priority_flag
+      ),
+      (bool)first_reduce_type
+        ? first_reduce_type
+        : second_reduce_type
+    );
   }
 
-  auto Application::delta_reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+  auto Application::apply(
+    const std::unique_ptr<const Expression> expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, bool> {
-    {
-      auto [first, is_changed] = this->first->delta_reduce(
-        symbol_table,
-        std::move(bound_variables)
-      );
-      if (is_changed) {
-        return std::make_tuple(std::make_unique<Application>(std::move(first), second->clone()), true);
-      }
-    }
-    {
-      auto [second, is_changed] = this->second->delta_reduce(
-        symbol_table,
-        std::move(bound_variables)
-      );
-      if (is_changed) {
-        return std::make_tuple(std::make_unique<Application>(first->clone(), std::move(second)), true);
-      }
-    }
-    return std::make_tuple(this->clone(), false);
+  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+    return std::make_tuple(
+      this->clone(),
+      ReduceType::NoReduce
+    );
   }
 
   auto Application::to_string() const -> std::string {
@@ -361,8 +473,29 @@ namespace lambda {
   }
 
   auto Application::clone() const -> std::unique_ptr<Expression> {
-    return std::make_unique<Application>(first->clone(), second->clone());
+    return std::make_unique<Application>(
+      first->clone(), 
+      second->clone(),
+      computational_priority_flag
+    );
   }
+  auto Application::clone(
+    bool new_computational_priority
+  ) const -> std::unique_ptr<Expression> {
+    return std::make_unique<Application>(
+      first->clone(), 
+      second->clone(), 
+      new_computational_priority
+    );
+  }
+
+  bool Application::is_computational_priority() const {
+    return computational_priority_flag 
+      || first->is_computational_priority()
+      || second->is_computational_priority()
+    ;
+  }
+
 
   static auto generate_church_number_body(unsigned number) -> std::unique_ptr<Expression> {
     if (number == 0) { return std::make_unique<Variable>("x"); }
@@ -383,6 +516,13 @@ namespace lambda {
     );
   }
 
+  static std::string reduce_type_to_header(ReduceType reduce_type) {
+    if (reduce_type == ReduceType::AlphaReduce) { return "alpha> "; }
+    else if (reduce_type == ReduceType::BetaReduce) { return "beta>  "; }
+    else if (reduce_type == ReduceType::DeltaReduce) { return "delta> "; }
+    else /* reduce_type == ReduceType::NoReduce */ { return ""; }
+  }
+
   auto Reducer::reduce(
      std::unique_ptr<Expression> expression
   ) -> std::tuple<std::string, std::unique_ptr<Expression>> {
@@ -390,32 +530,13 @@ namespace lambda {
     auto result_string = expression->to_string() + "\n";
     auto expr = std::move(expression);
 
-    bool is_changed_global = true;
+    while (true) {
+      auto [new_expr, reduce_type] = expr->reduce(symbol_table, {});
 
-    while (is_changed_global) {
-      is_changed_global = false;
+      if (reduce_type == ReduceType::NoReduce) { break; }
 
-      {
-        auto [new_expr, is_changed] = expr->beta_reduce({});
-        expr = std::move(new_expr);
-
-        if (is_changed) { 
-          is_changed_global = true;
-          result_string += "beta>  " + expr->to_string() + "\n";
-          continue; 
-        }
-      }
-
-      {
-        auto [new_expr, is_changed] = expr->delta_reduce(symbol_table, {});
-        expr = std::move(new_expr);
-
-        if (is_changed) { 
-          is_changed_global = true;
-          result_string += "delta> " + expr->to_string() + "\n";
-          continue; 
-        }
-      }
+      result_string += reduce_type_to_header(reduce_type) + new_expr->to_string() + "\n";
+      expr = std::move(new_expr);
     }
     
     return std::make_tuple(result_string, std::move(expr));
