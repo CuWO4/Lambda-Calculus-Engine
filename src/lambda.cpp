@@ -33,6 +33,14 @@ namespace lambda {
     return result;
   }
 
+  static bool is_number(std::string s) {
+    for (auto ch: s) {
+      if (ch < '0' || ch > '9') { return false; }
+    }
+    return true;
+  }
+
+
 
   ComputationalPriority remove_lazy(ComputationalPriority computational_priority) {
     return computational_priority == ComputationalPriority::Lazy
@@ -79,6 +87,13 @@ namespace lambda {
     std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     computational_priority_flag = remove_lazy(computational_priority_flag);
+
+    if (is_number(literal)) {
+      auto new_expr = generate_church_number(atoi(literal.c_str()));
+      new_expr->set_computational_priority(computational_priority_flag);
+      delete this;
+      return { new_expr, ReduceType::Delta };
+    }
 
     if (!has(bound_variables, literal) && has(symbol_table, literal)) {
       auto new_expr = symbol_table.find(literal)->second->clone(computational_priority_flag);
@@ -133,14 +148,7 @@ namespace lambda {
       new_computational_priority
     );
   }
-
-  static bool is_number(std::string s) {
-    for (auto ch: s) {
-      if (ch < '0' || ch > '9') { return false; }
-    }
-    return true;
-  }
-
+  
   bool Variable::is_eager(
     std::unordered_multiset<std::string>& bound_variables
   ) {

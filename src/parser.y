@@ -21,7 +21,7 @@
   lambda::Variable*   LambdaVariable;
 }
 
-%token  <String> TK_IDENTIFIER TK_NUMBER
+%token  <String> TK_IDENTIFIER
 %token  TK_DEFINE
 
 %type <LambdaExpression> expression abstraction application atomic
@@ -88,10 +88,6 @@ atomic
 
 variable
   : TK_IDENTIFIER { $$ = new lambda::Variable($1); }
-  | TK_NUMBER {
-    reducer.register_symbol($1, lambda::generate_church_number(atoi($1)));
-    $$ = new lambda::Variable($1);
-  }
 ;
 
 %%

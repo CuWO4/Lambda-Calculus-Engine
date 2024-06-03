@@ -29,7 +29,7 @@
 
 WhiteSpace      [ \n\r\t]
 LineComment     "//".*
-Identifier      [^0-9 \n\r\t\\@#.(){}$:][^ \n\r\t\\@#.:(){}$]*
+Identifier      [^ \n\r\t\\@#.:(){}$]+
 Number          [0-9]+
 Path            [^:*?"<>|\n\r]+
 
@@ -60,7 +60,6 @@ Path            [^:*?"<>|\n\r]+
 
 ":="            { return TK_DEFINE; }
 {Identifier}    { strcpy(yylval.String, yytext); return TK_IDENTIFIER; }
-{Number}        { strcpy(yylval.String, yytext); return TK_NUMBER; }
 .               { return yytext[0]; }
 
 %%
