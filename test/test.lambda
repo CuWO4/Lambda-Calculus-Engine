@@ -1,3 +1,0 @@
-import "nature.lambda"
-
-@ != 2 3

@@ -64,16 +64,7 @@ $(BUILD_DIR) :
 DEPS := $(OBJS:.o=.d)
 -include $(DEPS)
 
-.PHONY: run clean docker lldb
-
-run: $(BUILD_DIR)/$(TARGET_EXEC)
-	./$(BUILD_DIR)/$(TARGET_EXEC) test/test.lambda test/test.out
+.PHONY: clean
 
 clean:
 	-rm -rf $(BUILD_DIR)
-
-docker :
-	docker run -it --rm -v ${CURDIR}:/root/lambda  maxxing/compiler-dev bash 
-
-lldb: $(BUILD_DIR)/$(TARGET_EXEC)
-	lldb $(BUILD_DIR)/$(TARGET_EXEC) -- test/test.lambda
