@@ -1,5 +1,5 @@
-# T := \p.\q.p
-# F := \p.\q.q
-# & := \p.\q.p q p
-# | := \p.\q.p p q
-# ! := \p.p F T
+# T := \p.\q. p
+# F := \p.\q. q
+# & := \p.\q. p q p
+# | := \p.\q. p p q
+# ! := \p. p $F $T

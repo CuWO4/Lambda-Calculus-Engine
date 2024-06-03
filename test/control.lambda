@@ -1,0 +1,27 @@
+import "logic.lambda"
+import "pair.lambda"
+
+# make_list := \init.\cond.\iter.
+  {cond init}
+    $([] init {make_list {iter init} cond iter})
+    $*
+
+# filter := \list.\cond.
+  (\list.
+    (\elem.\tail.
+      {*? list}
+        $*
+        $(
+          {cond elem}
+            $([] elem (filter tail cond))
+            $(filter tail cond)
+        )
+    ) {[ list} {] list}
+  ) {list}
+
+# fold := \list.\null.\comb.
+  (\list.
+    {*? list}
+      $null
+      $(comb ([ list) (fold (] list) null comb))
+  ) {list}

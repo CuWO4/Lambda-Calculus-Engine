@@ -1,0 +1,55 @@
+import "logic.lambda"
+import "nature.lambda"
+import "pair.lambda"
+
+# newz := \a.\b.[] {a} {b}
+# reducez := \i. 
+  (\a.\b.
+    {| (is0n? a) (is0n? b)}
+      i 
+      ({>=n a b} (newz (-n a b) 0) (newz 0 (-n b a)))
+  ) {[ i} {] i}
+
+# ++z := \i. newz (++n {[ i}) (] i)
+# --z := \i. newz ([ i) (++n {] i})
+
+# +z := \x.\y. 
+  newz 
+    (+n {[ x} {[ y}) 
+    (+n {] x} {] y})
+# -z := \x.\y. 
+  newz 
+    (+n {[ x} {] y}) 
+    (+n {] x} {[ y})
+# *z := \x.\y. 
+  (\a.\b.\c.\d. newz 
+    (+n {*n a c} {*n b d}) 
+    (+n {*n a d} {*n b c})
+  ) {[ x} {] x} {[ y} {] y}
+
+# =z := \x.\y.
+  (\x.\y. =n
+    {+n ([ x) (] y)}
+    {+n (] x) ([ y)}
+  ) {reducez x} {reducez y}
+# !=z := \x.\y. ! (=z x y)
+# >=z := \x.\y.
+(\x.\y. >=n
+  {+n ([ x) (] y)}
+  {+n (] x) ([ y)}
+) {reducez x} {reducez y}
+# <=z := \x.\y.
+  (\x.\y. <=n
+    {+n ([ x) (] y)}
+    {+n (] x) ([ y)}
+  ) {reducez x} {reducez y}
+# >z := \x.\y.
+  (\x.\y. &
+    (>=z x y)
+    (!=z x y)
+  ) {reducez x} {reducez y}
+# <z := \x.\y.
+  (\x.\y. &
+    (<=z x y)
+    (!=z x y)
+  ) {reducez x} {reducez y}

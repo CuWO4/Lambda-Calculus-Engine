@@ -1,17 +1,57 @@
 import "logic.lambda"
 
-# ++ := \n.\f.\x. f(n f x)
-# -- := \n.\f.\x.n (\g.\h.h (g f)) (\u.x) (\u.u)
+# ++n := \n.\f.\x. f (n f x)
+# --n := \n.\f.\x. n (\g.\h. h (g f)) (\u. x) (\u. u)
 
-# + := \m.\n.m ++ n
-# - := \m.\n.n -- m
-# * := \m.\n.m (+ n) 0
-# ^ := \b.\e.e b
+# +n := \m.\n. m ++n n
+# -n := \m.\n. n --n m
+# *n := \m.\n. m {+n n} 0
+# ^n := \b.\e. e {b}
 
-# is0? := \n.n (\x.F) T
-# <= := \m.\n.is0? (- m n)
-# >= := \m.\n.is0? (- n m)
-# = := \m.\n. & (<= m n) (>= m n)
-# != := \m.\n. ! (= m n)
-# < := \m.\n. & (<= m n) (!= m n)
-# > := \m.\n. & (>= m n) (!= m n)
+# is0n? := \n. n (\x. $F) $T
+# <=n := \m.\n. is0n? (-n m n)
+# >=n := \m.\n. is0n? (-n n m)
+# =n := \m.\n. 
+  (\m.\n.
+    & (<=n m n) (>=n m n)
+  ) {m} {n}
+# !=n := \m.\n. ! {=n m n}
+# <n := \m.\n. <=n {++n m} n
+# >n := \m.\n. >=n m {++n n}
+
+# %n := \m.\n.
+  (\m.\n.
+    {<n m n}
+      $m
+      $(%n (-n m n) n)
+  ) {m} {n}
+
+# div? := \m.\n.
+  is0n? (%n n m)
+
+# prime? := \n.
+  (\n.
+    {<=n n 1}
+      $F
+      $(prime_impl n 2)
+  ) {n}
+
+# prime_impl := \n.\i.
+  {<=n (*n i i) n}
+    $(
+      {div? i n}
+        $F
+        (prime_impl n {++n i})
+    )
+    $T
+
+# gcd := \m.\n.
+  (\m.\n.
+    {>=n m n}
+      $(gcd n m)
+      $(
+        {is0n? m}
+        $n
+        $(gcd (%n n m) m)
+      )
+  ) {m} {n}
