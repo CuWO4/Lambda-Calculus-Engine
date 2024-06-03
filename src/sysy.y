@@ -45,13 +45,13 @@ command
 
 definition
   : '#' TK_IDENTIFIER TK_DEFINE expression {
-    reducer.register_symbol($2, std::unique_ptr<lambda::Expression>($4));
+    reducer.register_symbol($2, $4);
   }
 ;
 
 solution
   : '@' expression { 
-    auto [path_string, _] = reducer.reduce(std::unique_ptr<lambda::Expression>($2)); 
+    auto [path_string, _] = reducer.reduce($2); 
     fprintf(out, "%s\n", path_string.c_str());
   }
 ;
@@ -60,20 +60,15 @@ expression: abstraction ;
 
 abstraction
   : '\\' variable '.' expression {
-    $$ = new lambda::Abstraction(
-      std::unique_ptr<lambda::Variable>($2),
-      std::unique_ptr<lambda::Expression>($4)
-    );
+    $$ = lambda::Abstraction::get_instance(*$2, $4);
+    delete $2;
   } 
   | application 
 ;
 
 application
   : application atomic {
-    $$ = new lambda::Application(
-      std::unique_ptr<lambda::Expression>($1),
-      std::unique_ptr<lambda::Expression>($2)
-    );
+    $$ = lambda::Application::get_instance($1, $2);
   }
   | atomic
 ;

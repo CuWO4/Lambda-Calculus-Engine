@@ -1,8 +1,7 @@
 #ifndef LAMBDA_H_
 #define LAMBDA_H_
 
-#include <memory>
-#include <tuple>
+#include <utility>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -10,10 +9,10 @@
 namespace lambda {
 
   enum class ReduceType {
-    NoReduce = 0,
-    AlphaReduce = 1,
-    BetaReduce = 2,
-    DeltaReduce = 3
+    Null = 0,
+    Alpha = 1,
+    Beta = 2,
+    Delta = 3
   };
 
   enum class Priority {
@@ -25,46 +24,49 @@ namespace lambda {
   class Variable;
   class Expression {
   public:
+    // delete this recursively
+    // crash when this is not allocated dynamically
+    virtual void delete_instance() = 0;
+
     // beta and delta reduce
     virtual auto reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_map<std::string, Expression*>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> = 0;
+    ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto replace(
-      const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression,
+      Variable& variable,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> = 0;
+    ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto apply(
-      const std::unique_ptr<const Expression> expression,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> = 0;
+    ) -> std::pair<Expression*, ReduceType> = 0;
 
-    virtual auto to_string() const -> std::string = 0;
-    virtual auto debug(int indent) const -> std::string = 0;
+    virtual auto to_string() -> std::string = 0;
 
-    virtual auto get_priority() const -> Priority = 0;
+    virtual auto get_priority() -> Priority = 0;
 
-    virtual auto clone() const -> std::unique_ptr<Expression> = 0;
+    virtual auto clone() -> Expression* = 0;
     virtual auto clone(
       bool new_computational_priority
-    ) const -> std::unique_ptr<Expression> = 0;
+    ) -> Expression* = 0;
 
-    virtual ~Expression() = default;
+    auto get_free_variables() -> std::unordered_set<std::string>&;
 
-    auto get_free_variables() const -> std::unordered_set<std::string> const&;
-
-    bool get_computational_priority() const;
+    bool get_computational_priority();
     virtual bool is_computational_priority(
       std::unordered_multiset<std::string>&& bound_variables
-    ) const = 0;
+    ) = 0;
     void set_computational_priority(bool computational_priority);
 
   protected:
     bool computational_priority_flag;
     std::unordered_set<std::string> free_variables;
+
+    virtual ~Expression() = default;
   };
 
   class Variable: public Expression {
@@ -73,50 +75,48 @@ namespace lambda {
       std::string literal, 
       bool computational_priority = false
     );
+    ~Variable() = default;
 
-    Variable(Variable& other) = delete;
+    void delete_instance() override;
+
+    Variable(Variable& other) = default;
     Variable(Variable&& other) = default;
-    Variable& operator=(Variable& other) = delete;
+    Variable& operator=(Variable& other) = default;
     Variable& operator=(Variable&& other) = default;
 
-    bool operator==(const Variable& right) const;
-    bool operator==(const Variable&& right) const;
+    bool operator==(Variable& right);
+    bool operator==(Variable&& right);
 
-    auto get_literal() -> std::string const&;
+    auto get_literal() -> std::string&;
 
     auto reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_map<std::string, Expression*>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
-      const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression,
+      Variable& variable,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
-      const std::unique_ptr<const Expression> expression,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
-    auto to_string() const -> std::string override;
-    auto debug(int indent) const -> std::string override;
+    auto to_string() -> std::string override;
 
-    auto get_priority() const -> Priority override;
+    auto get_priority() -> Priority override;
 
-    auto clone_variable() const -> std::unique_ptr<Variable>; 
-    auto clone_variable(
-      bool new_computational_priority
-    ) const -> std::unique_ptr<Variable>;
-    auto clone() const -> std::unique_ptr<Expression> override;
+    auto clone() -> Expression* override;
     auto clone(
       bool new_computational_priority
-    ) const -> std::unique_ptr<Expression> override;
+    ) -> Expression* override;
 
     bool is_computational_priority(
       std::unordered_multiset<std::string>&& bound_variables
-    ) const override;
+    ) override;
 
   private:
     std::string literal;
@@ -124,116 +124,144 @@ namespace lambda {
 
   class Abstraction: public Expression {
   public:
-    Abstraction(
-      std::unique_ptr<Variable> binder,
-      std::unique_ptr<Expression> body,
+    // to make sure all instance is alloced dynamically
+    static Abstraction* get_instance(
+      Variable binder,
+      Expression* body,
       bool computational_priority = false
     );
+    void delete_instance() override;
 
-    Abstraction(Abstraction& other) = delete;
+    Abstraction(Abstraction& other) = default;
     Abstraction(Abstraction&& other) = default;
-    Abstraction& operator=(Abstraction& other) = delete;
+    Abstraction& operator=(Abstraction& other) = default;
     Abstraction& operator=(Abstraction&& other) = default;
 
     auto alpha_reduce(
-      const std::unique_ptr<const Variable> to
-    ) const -> std::unique_ptr<Expression>;
+      Variable to
+    ) -> Abstraction*;
 
     auto reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_map<std::string, Expression*>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
-      const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression,
+      Variable& variable,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
-      const std::unique_ptr<const Expression> expression,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
-    auto to_string() const -> std::string override;
-    auto debug(int indent) const -> std::string override;
+    auto to_string() -> std::string override;
 
-    auto get_priority() const -> Priority override;
+    auto get_priority() -> Priority override;
 
-    auto clone() const -> std::unique_ptr<Expression> override;
+    auto clone() -> Expression* override;
     auto clone(
       bool new_computational_priority
-    ) const -> std::unique_ptr<Expression> override;
+    ) -> Expression* override;
 
     bool is_computational_priority(
       std::unordered_multiset<std::string>&& bound_variables
-    ) const override;
+    ) override;
 
   private:
-    std::unique_ptr<Variable> binder;
-    std::unique_ptr<Expression> body;
+    Variable binder;
+    Expression* body;
+
+    Abstraction(
+      Variable binder,
+      Expression* body,
+      bool computational_priority
+    );
+    // delete non-recursively
+    ~Abstraction() = default;
   };
 
   class Application: public Expression {
   public:
-    Application(
-      std::unique_ptr<Expression> first,
-      std::unique_ptr<Expression> second,
+    static Application* get_instance(
+      Expression* first,
+      Expression* second,
       bool computational_priority = false
     );
+    void delete_instance() override;
 
-    Application(Application& other) = delete;
+    Application(Application& other) = default;
     Application(Application&& other) = default;
-    Application& operator=(Application& other) = delete;
+    Application& operator=(Application& other) = default;
     Application& operator=(Application&& other) = default;
 
     auto reduce(
-      std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+      std::unordered_map<std::string, Expression*>& symbol_table,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
-      const std::unique_ptr<const Variable> variable,
-      const std::unique_ptr<const Expression> expression,
+      Variable& variable,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
-      const std::unique_ptr<const Expression> expression,
+      Expression& expression,
       std::unordered_multiset<std::string>&& bound_variables
-    ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> override;
+    ) -> std::pair<Expression*, ReduceType> override;
 
-    auto to_string() const -> std::string override;
-    auto debug(int indent) const -> std::string override;
+    auto to_string() -> std::string override;
 
-    auto get_priority() const -> Priority override;
+    auto get_priority() -> Priority override;
 
-    auto clone() const -> std::unique_ptr<Expression> override;
+    auto clone() -> Expression* override;
     auto clone(
       bool new_computational_priority
-    ) const -> std::unique_ptr<Expression> override;
+    ) -> Expression* override;
 
     bool is_computational_priority(
       std::unordered_multiset<std::string>&& bound_variables
-    ) const override;
+    ) override;
 
   private:
-    std::unique_ptr<Expression> first;
-    std::unique_ptr<Expression> second;
+    Expression* first;
+    Expression* second;
+
+    Application(
+      Expression* first,
+      Expression* second,
+      bool computational_priority
+    );
+    ~Application() = default;
+
+    auto reduce_first(
+      std::unordered_map<std::string, Expression*>& symbol_table,
+      std::unordered_multiset<std::string>& bound_variables
+    ) -> std::pair<bool, ReduceType>;
+
+    auto reduce_second(
+      std::unordered_map<std::string, Expression*>& symbol_table,
+      std::unordered_multiset<std::string>& bound_variables
+    ) -> std::pair<bool, ReduceType>;
   };
 
-  auto generate_church_number(unsigned number) -> std::unique_ptr<Expression>;
+  auto generate_church_number(unsigned number) -> Expression*;
 
   class Reducer {
   public:
     auto reduce(
-      std::unique_ptr<Expression> expression
-    ) -> std::tuple<std::string, std::unique_ptr<Expression>>;
+      Expression* expression
+    ) -> std::pair<std::string, Expression*>;
 
-    void register_symbol(std::string literal, std::unique_ptr<Expression> expression);
+    void register_symbol(std::string literal, Expression* expression);
+
+    ~Reducer();
 
   private:
-    std::unordered_map<std::string, std::unique_ptr<Expression>> symbol_table;
+    std::unordered_map<std::string, Expression*> symbol_table;
   };
 
 }

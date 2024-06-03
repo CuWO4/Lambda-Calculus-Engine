@@ -5,16 +5,10 @@
 
 namespace lambda {
 
-  static auto build_indent(int indent) { 
-    auto res = std::string("");
-    for (int i = 0;  i < indent; i++) res += " ";
-    return res;
-  }
-
   template <typename T>
   static auto operator+(
-    std::unordered_set<T> const& a,
-    std::unordered_set<T> const& b
+    std::unordered_set<T>& a,
+    std::unordered_set<T>& b
   ) -> std::unordered_set<T> {
     auto result = a;
     result.insert(b.begin(), b.end());
@@ -22,8 +16,8 @@ namespace lambda {
   }
 
   template <template<typename...> typename Container, typename T, typename... Ts>
-  static bool has(const Container<T, Ts...>& container, const T& element) {
-    return container.count(element) > 0;    
+  static bool has(Container<T, Ts...>& container, T& element) {
+    return container.count(element) > 0;
   }
 
   static auto index_to_string(unsigned index) -> std::string {
@@ -39,12 +33,12 @@ namespace lambda {
   }
 
 
-  auto Expression::get_free_variables() const -> std::unordered_set<std::string> const& {
+  auto Expression::get_free_variables() -> std::unordered_set<std::string>& {
     return free_variables;
   }
 
-  bool Expression::get_computational_priority() const { 
-    return computational_priority_flag; 
+  bool Expression::get_computational_priority() {
+    return computational_priority_flag;
   }
 
   void Expression::set_computational_priority(bool computational_priority) {
@@ -57,255 +51,229 @@ namespace lambda {
     computational_priority_flag = computational_priority;
   }
 
-  bool Variable::operator==(const Variable& right) const { 
-    return literal == right.literal; 
-  }
-  bool Variable::operator==(const Variable&& right) const { 
-    return literal == right.literal; 
+  void Variable::delete_instance() {
+    delete this;
   }
 
-  auto Variable::get_literal() -> std::string const& { return literal; }
+  bool Variable::operator==(Variable& right) {
+    return literal == right.literal;
+  }
+  bool Variable::operator==(Variable&& right) {
+    return literal == right.literal;
+  }
+
+  auto Variable::get_literal() -> std::string& { return literal; }
 
   auto Variable::reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+    std::unordered_map<std::string, Expression*>& symbol_table,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+  ) -> std::pair<Expression*, ReduceType> {
     if (!has(bound_variables, literal) && has(symbol_table, literal)) {
-      return std::make_tuple(
-        symbol_table.find(literal)->second->clone(this->computational_priority_flag),
-        ReduceType::DeltaReduce
-      );
+      auto new_expr = symbol_table.find(literal)->second->clone(this->computational_priority_flag);
+      delete this;
+      return { new_expr, ReduceType::Delta };
     }
 
-    return std::make_tuple(
-      this->clone(false),
-      ReduceType::NoReduce
-    );
+    computational_priority_flag = false;
+    return { this, ReduceType::Null };
   }
 
   auto Variable::replace(
-    const std::unique_ptr<const Variable> variable,
-    const std::unique_ptr<const Expression> expression,
+    Variable& variable,
+    Expression& expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
-    if (*this == *variable) {
-      return std::make_tuple(
-        expression->clone(this->computational_priority_flag),
-        ReduceType::BetaReduce
-      );
+  ) -> std::pair<Expression*, ReduceType> {
+    if (*this == variable) {
+      auto new_expr = expression.clone(computational_priority_flag);
+      delete this;
+      return { new_expr, ReduceType::Beta };
     }
-    
-    return std::make_tuple(
-      this->clone(),
-      ReduceType::NoReduce
-    );
+
+    return { this, ReduceType::Null };
   }
 
   auto Variable::apply(
-    const std::unique_ptr<const Expression> expression,
+    Expression& expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {  
-    return std::make_tuple(
-      this->clone(),
-      ReduceType::NoReduce
-    );
+  ) -> std::pair<Expression*, ReduceType> {
+    return { this, ReduceType::Null };
   }
 
-  auto Variable::to_string() const -> std::string { 
-    return literal; 
+  auto Variable::to_string() -> std::string {
+    return literal;
   }
 
-  auto Variable::debug(int indent) const -> std::string { return build_indent(indent) + literal; }
-
-  auto Variable::get_priority() const -> Priority {
+  auto Variable::get_priority() -> Priority {
     return Priority::Variable;
   }
 
-  auto Variable::clone_variable() const -> std::unique_ptr<Variable> {
-    return std::make_unique<Variable>(
-      literal, 
+  auto Variable::clone() -> Expression* {
+    return new Variable(
+      literal,
       computational_priority_flag
     );
   }
-
-  auto Variable::clone_variable(
+  auto Variable::clone(
     bool new_computational_priority
-  ) const -> std::unique_ptr<Variable> {
-    return std::make_unique<Variable>(
-      literal, 
+  ) -> Expression* {
+    return new Variable(
+      literal,
       new_computational_priority
     );
   }
 
-  auto Variable::clone() const -> std::unique_ptr<Expression> {
-    return this->clone_variable();
-  }
-  auto Variable::clone(
-    bool new_computational_priority
-  ) const -> std::unique_ptr<Expression> {
-    return this->clone_variable(new_computational_priority);
-  }
-
   bool Variable::is_computational_priority(
     std::unordered_multiset<std::string>&& bound_variables
-  ) const {
+  ) {
     return !has(bound_variables, literal) && computational_priority_flag;
   }
 
 
   Abstraction::Abstraction(
-    std::unique_ptr<Variable> binder,
-    std::unique_ptr<Expression> body,
+    Variable binder,
+    Expression* body,
     bool computational_priority
-  ): binder(std::move(binder)), body(std::move(body)) {
+  ): binder(binder), body(body) {
     free_variables = this->body->get_free_variables();
-    free_variables.erase(this->binder->get_literal());
+    free_variables.erase(this->binder.get_literal());
     computational_priority_flag = computational_priority;
   }
 
+  Abstraction* Abstraction::get_instance(
+    Variable binder,
+    Expression *body,
+    bool computational_priority
+  ) {
+    return new Abstraction(binder, body, computational_priority);
+  }
+
+  void Abstraction::delete_instance() {
+    body->delete_instance();
+    delete this;
+  }
+
   auto Abstraction::alpha_reduce(
-    const std::unique_ptr<const Variable> to
-  ) const -> std::unique_ptr<Expression> {
-    return std::make_unique<Abstraction>(
-      to->clone_variable(),
-      std::get<0>(
-        body->replace(
-          binder->clone_variable(), 
-          to->clone_variable(), 
-          {} // do not care and should not care
-        )
-      ),
+    Variable to
+  ) -> Abstraction* {
+    auto new_expr = Abstraction::get_instance(
+      to,
+      body->replace(binder, to, {} /* do not care and should not care */).first,
       computational_priority_flag
     );
+    delete this;
+    return new_expr;
   }
 
   auto Abstraction::reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+    std::unordered_map<std::string, Expression*>& symbol_table,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
-    bound_variables.emplace(binder->get_literal());
-    auto [new_body, reduce_type] = body->reduce(symbol_table, std::move(bound_variables));
-    bound_variables.erase(bound_variables.find(binder->get_literal()));
-
-    return std::make_tuple(
-      std::make_unique<Abstraction>(
-        binder->clone_variable(),
-        std::move(new_body),
-        (bool)reduce_type && computational_priority_flag
-      ),
-      reduce_type
+  ) -> std::pair<Expression*, ReduceType> {
+    bound_variables.emplace(binder.get_literal());
+    auto [new_body, reduce_type] = body->reduce(
+      symbol_table,
+      std::move(bound_variables)
     );
+    bound_variables.erase(bound_variables.find(binder.get_literal()));
+
+    auto new_expr = new Abstraction(
+      binder,
+      new_body,
+      (bool)reduce_type && computational_priority_flag
+    );
+    delete this;
+    return { new_expr, reduce_type };
   }
 
   auto Abstraction::replace(
-    const std::unique_ptr<const Variable> variable,
-    const std::unique_ptr<const Expression> expression,
+    Variable& variable,
+    Expression& expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
-    if (*variable == *binder) {
-      return std::make_tuple(
-        this->clone(),
-        ReduceType::NoReduce
-      );
+  ) -> std::pair<Expression*, ReduceType> {
+    if (variable == binder) {
+      return { this, ReduceType::Null };
     }
 
-    if (has(expression->get_free_variables(), binder->get_literal())) {
+    if (has(expression.get_free_variables(), binder.get_literal())) {
       for (int i = 0;; i++) {
         std::string new_literal = index_to_string(i);
         if (!has(bound_variables, new_literal)) {
           return this->alpha_reduce(
-            std::make_unique<Variable>(new_literal)
+            Variable(new_literal)
           )->replace(
-            variable->clone_variable(), 
-            expression->clone(), 
+            variable,
+            expression,
             std::move(bound_variables)
           );
         }
       }
     }
 
-    bound_variables.emplace(binder->get_literal());
+    bound_variables.emplace(binder.get_literal());
     auto [new_body, reduce_type] = body->replace(
-      variable->clone_variable(), 
-      expression->clone(),
+      variable,
+      expression,
       std::move(bound_variables)
     );
-    bound_variables.erase(bound_variables.find(binder->get_literal()));
+    bound_variables.erase(bound_variables.find(binder.get_literal()));
 
-    return std::make_tuple(
-      std::make_unique<Abstraction>(
-        binder->clone_variable(),
-        std::move(new_body),
-        computational_priority_flag
-      ),
-      reduce_type
+    auto new_expr = new Abstraction(
+      binder,
+      new_body,
+      computational_priority_flag
     );
+    delete this;
+    return { new_expr, reduce_type };
   }
 
   auto Abstraction::apply(
-    const std::unique_ptr<const Expression> expression,
+    Expression& expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
-    bound_variables.emplace(binder->get_literal());
-    auto result = std::get<0>(
-      body->replace(
-        binder->clone_variable(), 
-        expression->clone(), 
-        std::move(bound_variables)
-      )
-    );
+  ) -> std::pair<Expression*, ReduceType> {
+    bound_variables.emplace(binder.get_literal());
+    auto result = body->replace(
+      binder,
+      expression,
+      std::move(bound_variables)
+    ).first;
     result->set_computational_priority(computational_priority_flag);
-    bound_variables.erase(bound_variables.find(binder->get_literal()));
+    bound_variables.erase(bound_variables.find(binder.get_literal()));
 
-    return std::make_tuple(
-      std::move(result),
-      ReduceType::BetaReduce
-    );
+    delete this;
+    return { result, ReduceType::Beta };
   }
 
-  auto Abstraction::to_string() const -> std::string {
-    return 
-      "\\" + binder->to_string() 
-      + "." + (body->get_priority() > Priority::Abstraction ? " " : "") 
+  auto Abstraction::to_string() -> std::string {
+    return
+      "\\" + binder.to_string()
+      + "." + (body->get_priority() > Priority::Abstraction ? " " : "")
       + body->to_string()
     ;
   }
 
-  auto Abstraction::debug(int indent) const -> std::string {
-    auto result = std::string("");
-
-    result += build_indent(indent) + "abst {\n";
-    result += binder->debug(indent + 1) + "\n";
-    result += body->debug(indent + 1) + "\n";
-    result += build_indent(indent) + "}";
-
-    return result;
-  }
-
-  auto Abstraction::get_priority() const -> Priority {
+  auto Abstraction::get_priority() -> Priority {
     return Priority::Abstraction;
   }
 
-  auto Abstraction::clone() const -> std::unique_ptr<Expression> {
-    return std::make_unique<Abstraction>(
-      binder->clone_variable(), 
-      body->clone(), 
+  auto Abstraction::clone() -> Expression* {
+    return new Abstraction(
+      binder,
+      body->clone(),
       computational_priority_flag
     );
   }
   auto Abstraction::clone(
     bool new_computational_priority
-  ) const -> std::unique_ptr<Expression> {
-    return std::make_unique<Abstraction>(
-      binder->clone_variable(), 
-      body->clone(), 
+  ) -> Expression* {
+    return new Abstraction(
+      binder,
+      body->clone(),
       new_computational_priority
     );
   }
 
   bool Abstraction::is_computational_priority(
     std::unordered_multiset<std::string>&& bound_variables
-  ) const {
+  ) {
     for(auto free_variable: free_variables) {
       if (has(bound_variables, free_variable)) { return false; }
     }
@@ -314,230 +282,188 @@ namespace lambda {
 
 
   Application::Application(
-    std::unique_ptr<Expression> first,
-    std::unique_ptr<Expression> second,
+    Expression* first,
+    Expression* second,
     bool computational_priority
-  ): first(std::move(first)), second(std::move(second)) {
-    free_variables = this->first->get_free_variables() 
+  ): first(first), second(second) {
+    free_variables = this->first->get_free_variables()
       + this->second->get_free_variables();
     computational_priority_flag = computational_priority;
   }
 
+  Application* Application::get_instance(
+    Expression* first,
+    Expression* second,
+    bool computational_priority
+  ) {
+    return new Application(first, second, computational_priority);
+  }
+
+  void Application::delete_instance() {
+    first->delete_instance();
+    second->delete_instance();
+    delete this;
+  }
+
+  auto Application::reduce_first(
+    std::unordered_map<std::string, Expression*>& symbol_table,
+    std::unordered_multiset<std::string>& bound_variables
+  ) -> std::pair<bool, ReduceType> {
+    auto pair = first->reduce(symbol_table, std::move(bound_variables));
+    first = pair.first;
+    auto reduce_type = pair.second;
+
+    computational_priority_flag = (bool)reduce_type && computational_priority_flag;
+    return { (bool)reduce_type, reduce_type };
+  }
+
+  auto Application::reduce_second(
+    std::unordered_map<std::string, Expression*>& symbol_table,
+    std::unordered_multiset<std::string>& bound_variables
+  ) -> std::pair<bool, ReduceType> {
+    auto pair = second->reduce(symbol_table, std::move(bound_variables));
+    second = pair.first;
+    auto reduce_type = pair.second;
+
+    computational_priority_flag = (bool)reduce_type && computational_priority_flag;
+    return { (bool)reduce_type, reduce_type };
+  }
+
   auto Application::reduce(
-    std::unordered_map<std::string, std::unique_ptr<Expression>>& symbol_table,
+    std::unordered_map<std::string, Expression*>& symbol_table,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+  ) -> std::pair<Expression*, ReduceType> {
     if (first->is_computational_priority(std::move(bound_variables))) {
-      auto [new_first, reduce_type] = first->reduce(symbol_table, std::move(bound_variables));
-      if ((bool)reduce_type) {
-        new_first->set_computational_priority(first->get_computational_priority());
-        return std::make_tuple(
-          std::make_unique<Application>(
-            std::move(new_first),
-            second->clone(),
-            computational_priority_flag
-          ),
-          reduce_type
-        );
-      } 
+      auto pair = reduce_first(symbol_table, bound_variables);
+      if (pair.first) return { this, pair.second };
     }
     else if (second->is_computational_priority(std::move(bound_variables))) {
-      auto [new_second, reduce_type] = second->reduce(symbol_table, std::move(bound_variables));
-      if ((bool)reduce_type) {
-        new_second->set_computational_priority(second->get_computational_priority());
-        return std::make_tuple(
-          std::make_unique<Application>(
-            first->clone(),
-            std::move(new_second),
-            computational_priority_flag
-          ),
-          reduce_type
-        );
-      } 
+      auto pair = reduce_second(symbol_table, bound_variables);
+      if (pair.first) return { this, pair.second };
     }
-    {
-      auto [new_expression, reduce_type] = first->apply(second->clone(), std::move(bound_variables));
-      if ((bool)reduce_type) {
-        new_expression->set_computational_priority(computational_priority_flag);
-        return std::make_tuple(std::move(new_expression), reduce_type);
-      }
+    
+    auto [new_expr, reduce_type] = first->apply(*second, std::move(bound_variables));
+    if ((bool)reduce_type) {
+      new_expr->set_computational_priority(computational_priority_flag);
+      delete this;
+      return {new_expr, reduce_type};
     }
-    {
-      auto [new_first, reduce_type] = first->reduce(symbol_table, std::move(bound_variables));
-      if ((bool)reduce_type) {
-        new_first->set_computational_priority(first->get_computational_priority());
-        return std::make_tuple(
-          std::make_unique<Application>(
-            std::move(new_first),
-            second->clone(),
-            computational_priority_flag
-          ),
-          reduce_type
-        );
-      } 
-    }
-    {
-      auto [new_second, reduce_type] = second->reduce(symbol_table, std::move(bound_variables));
-      if ((bool)reduce_type) {
-        new_second->set_computational_priority(second->get_computational_priority());
-        return std::make_tuple(
-          std::make_unique<Application>(
-            first->clone(),
-            std::move(new_second),
-            computational_priority_flag
-          ),
-          reduce_type
-        );
-      } 
-    }
-    return std::make_tuple(
-      this->clone(false),
-      ReduceType::NoReduce
-    );
+    
+    auto pair = reduce_first(symbol_table, bound_variables);
+    if (pair.first) return { this, pair.second };
+
+    pair = reduce_second(symbol_table, bound_variables);
+    if (pair.first) return { this, pair.second };
+
+    return { this, ReduceType::Null };
   }
 
   auto Application::replace(
-    const std::unique_ptr<const Variable> variable,
-    const std::unique_ptr<const Expression> expression,
+    Variable& variable,
+    Expression& expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
+  ) -> std::pair<Expression*, ReduceType> {
     auto [new_first, first_reduce_type] = first->replace(
-      variable->clone_variable(), 
-      expression->clone(), 
+      variable,
+      expression,
       std::move(bound_variables)
     );
-    if (first_reduce_type == ReduceType::AlphaReduce) {
-      return std::make_tuple(
-        std::make_unique<Application>(
-          std::move(new_first),
-          second->clone(),
-          computational_priority_flag
-        ),
-        first_reduce_type
-      );
-    }
+    first = new_first;
 
     auto [new_second, second_reduce_type] = second->replace(
-      variable->clone_variable(), 
-      expression->clone(), 
+      variable,
+      expression,
       std::move(bound_variables)
     );
-    if (second_reduce_type == ReduceType::AlphaReduce) {
-      return std::make_tuple(
-        std::make_unique<Application>(
-          first->clone(),
-          std::move(new_second),
-          computational_priority_flag
-        ),
-        second_reduce_type
-      );
-    }
+    second = new_second;
 
-    return std::make_tuple(
-      std::make_unique<Application>(
-        std::move(new_first),
-        std::move(new_second),
-        computational_priority_flag
-      ),
+    return {
+      this,
       (bool)first_reduce_type
         ? first_reduce_type
         : second_reduce_type
-    );
+    };
   }
 
   auto Application::apply(
-    const std::unique_ptr<const Expression> expression,
+    Expression& expression,
     std::unordered_multiset<std::string>&& bound_variables
-  ) const -> std::tuple<std::unique_ptr<Expression>, ReduceType> {
-    return std::make_tuple(
-      this->clone(),
-      ReduceType::NoReduce
-    );
+  ) -> std::pair<Expression*, ReduceType> {
+    return { this, ReduceType::Null };
   }
 
-  auto Application::to_string() const -> std::string {
+  auto Application::to_string() -> std::string {
     auto result = std::string("");
 
-    if (first->get_priority() < get_priority()) { 
-      result += "(" + first->to_string() + ")"; 
+    if (first->get_priority() < get_priority()) {
+      result += "(" + first->to_string() + ")";
     }
     else { result += first->to_string(); }
 
     result += " ";
 
-    if (second->get_priority() <= get_priority()) { 
-      result += "(" + second->to_string() + ")"; 
+    if (second->get_priority() <= get_priority()) {
+      result += "(" + second->to_string() + ")";
     }
     else { result += second->to_string(); }
 
     return result;
   }
 
-  auto Application::debug(int indent) const -> std::string {
-    auto result = std::string("");
-
-    result += build_indent(indent) + "appl {\n";
-    result += first->debug(indent + 1) + "\n";
-    result += second->debug(indent + 1) + "\n";
-    result += build_indent(indent) + "}";
-
-    return result;
-  }
-
-  auto Application::get_priority() const -> Priority {
+  auto Application::get_priority() -> Priority {
     return Priority::Application;
   }
 
-  auto Application::clone() const -> std::unique_ptr<Expression> {
-    return std::make_unique<Application>(
-      first->clone(), 
+  auto Application::clone() -> Expression* {
+    return new Application(
+      first->clone(),
       second->clone(),
       computational_priority_flag
     );
   }
   auto Application::clone(
     bool new_computational_priority
-  ) const -> std::unique_ptr<Expression> {
-    return std::make_unique<Application>(
-      first->clone(), 
-      second->clone(), 
+  ) -> Expression* {
+    return new Application(
+      first->clone(),
+      second->clone(),
       new_computational_priority
     );
   }
 
   bool Application::is_computational_priority(
     std::unordered_multiset<std::string>&& bound_variables
-  ) const {
-    return computational_priority_flag 
+  ) {
+    return computational_priority_flag
       || first->is_computational_priority(std::move(bound_variables))
       || second->is_computational_priority(std::move(bound_variables))
     ;
   }
 
 
-  static auto generate_church_number_body(unsigned number) -> std::unique_ptr<Expression> {
-    if (number == 0) { return std::make_unique<Variable>("x"); }
+  static auto generate_church_number_body(unsigned number) -> Expression* {
+    if (number == 0) { return new Variable("x"); }
 
-    return std::make_unique<Application>(
-      std::make_unique<Variable>("f"),
+    return Application::get_instance(
+      new Variable("f"),
       generate_church_number_body(number - 1)
     );
   }
 
-  auto generate_church_number(unsigned number) -> std::unique_ptr<Expression> {
-    return std::make_unique<Abstraction>(
-      std::make_unique<Variable>("f"),
-      std::make_unique<Abstraction>(
-        std::make_unique<Variable>("x"),
+  auto generate_church_number(unsigned number) -> Expression* {
+    return Abstraction::get_instance(
+      Variable("f"),
+      Abstraction::get_instance(
+        Variable("x"),
         generate_church_number_body(number)
       )
     );
   }
 
   static std::string reduce_type_to_header(ReduceType reduce_type) {
-    if (reduce_type == ReduceType::AlphaReduce) { return "alpha> "; }
-    else if (reduce_type == ReduceType::BetaReduce) { return "beta>  "; }
-    else if (reduce_type == ReduceType::DeltaReduce) { return "delta> "; }
+    if (reduce_type == ReduceType::Alpha) { return "alpha> "; }
+    else if (reduce_type == ReduceType::Beta) { return "beta>  "; }
+    else if (reduce_type == ReduceType::Delta) { return "delta> "; }
     else /* reduce_type == ReduceType::NoReduce */ { return ""; }
   }
 
@@ -549,42 +475,47 @@ namespace lambda {
   }
 
   auto Reducer::reduce(
-     std::unique_ptr<Expression> expression
-  ) -> std::tuple<std::string, std::unique_ptr<Expression>> {
+     Expression* expression
+  ) -> std::pair<std::string, Expression*> {
 
     auto result_string = expression->to_string() + "\n";
     auto expr = expression->clone();
 
     unsigned long long step;
 
-    auto msec = msec_count(
-      [&]() {
-        for (step = 0;; step++) {
-          auto [new_expr, reduce_type] = expr->reduce(symbol_table, {});
+    auto msec = msec_count([&]() {
+      for (step = 0;; step++) {
+        auto pair = expr->reduce(symbol_table, {});
+        expr = pair.first;
+        auto reduce_type = pair.second;
 
-          if (reduce_type == ReduceType::NoReduce) { break; }
+        if (reduce_type == ReduceType::Null) { break; }
 
-          result_string += reduce_type_to_header(reduce_type) + new_expr->to_string() + "\n";
-          expr = std::move(new_expr);
-        }
+        result_string += reduce_type_to_header(reduce_type) + expr->to_string() + "\n";
       }
-    );
+    });
 
     result_string += "\nto be sought:    " + expression->to_string() + "\n"
                   +    "result:          " + expr->to_string() + "\n"
                   +    "step taken:      " + std::to_string(step) + "\n"
                   +    "character count: " + std::to_string(result_string.length()) + "\n"
                   +    "time cost:       " + std::to_string(msec) + "ms" +"\n";
-    
-    return std::make_tuple(result_string, std::move(expr));
+
+    return {result_string, expr};
   }
 
 
   void Reducer::register_symbol(
-    std::string literal, 
-    std::unique_ptr<Expression> expression
+    std::string literal,
+    Expression* expression
   ) {
-    symbol_table[literal] = std::move(expression);
+    symbol_table[literal] = expression;
+  }
+
+  Reducer::~Reducer() {
+    for (auto symbol: symbol_table) {
+      symbol.second->delete_instance();
+    }
   }
 
 }
