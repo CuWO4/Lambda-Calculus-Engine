@@ -14,7 +14,7 @@ A very fast lambda calculus engine that allows to specify local evaluation order
 make
 ```
 
-编译环境:
+Compile Environment:
 
 * Ubuntu 20.04.6 LTS
 
