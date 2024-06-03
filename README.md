@@ -1,46 +1,122 @@
-# Lambda Calculus Calculator
+# Lambda Calculus Engine
+
+A very fast lambda calculus engine that allows to specify local evaluation order.
 
 ---
+
+## INTRODUCTION TO LAMBDA CALCULUS
+
+[Wikipedia: Lambda Calculus](https://en.wikipedia.org/wiki/Lambda_calculus)
+
+## COMPILE
+
+```bash
+make
+```
+
+编译环境:
+
+* Ubuntu 20.04.6 LTS
+
+* clang 13.0.1
+
+* GNU Make 4.2.1
+
+* flex 2.6.4
+
+* GNU bison 3.5.1
 
 ## USAGE
 
 ```bash
 lambda [INPUT] [OUTPUT]
 ```
-* `[INPUT]` 源文件, 语法见 [GRAMMAR](#grammar).
-* `[OUTPUT]` 输出文件, 向其中输出推导过程. 可选, 缺省 `stdout`.
+* `[INPUT]` Source file, see [GRAMMAR](#grammar) for syntax.
+* `[OUTPUT]` Output file to store the derivation process. Optional, default is `stdout`.
 
 ## GRAMMAR
+
+#### Keywords
+
+`\`, `@`, `#`, `.`, `:=`, `(`, `)` `{`, `}`, `$`.
+
+#### Statements
 
 ```
 # [SYMBOL] := [EXPRESSION]
 ```
-将 `[SYMBOL]` 定义为 `[EXPRESSION]`.
+Define `[SYMBOL]` as `[EXPRESSION]`.
 
 ```
 @ [EXPRESSION]
 ```
-推导`[EXPRESSION]`.
+Derive `[EXPRESSION]`.
 
-所有数字会被自动推导为对应丘奇数.
+All numbers will be automatically derived as corresponding Church numerals.
 
 ```
 import [PATH]
 ```
-推导 `[PATH]` 指示的文件, 并保留其内的定义.
+Derive the file indicated by `[PATH]`, preserving its definitions.
+
+#### Expressions
+
+**Variables**
+
+Any string of any length that does not contain keywords.
+
+**Abstraction**
+```
+\[VAR]. [EXPR]
+```
+
+**Application**
+
+```
+[EXPR] [EXPR]
+```
+
+**Precedence**
+
+Parentheses can specify precedence.
+
+Abstraction has higher precedence than application. For example, `\x. A B` will be interpreted as `\x. (A B)` rather than `(\x. A) B`.
+
+Application is left-associative. For example, `A B C` will be interpreted as `(A B) C` rather than `A (B C)`.
+
+#### Evaluation Order
+
+The engine uses lazy evaluation by default. For example, for `A B`, the engine will first attempt to apply `B` to `A`, then try to simplify `A`, and finally try to simplify `B`.
+
+**Braces**
+
+Expressions can be wrapped in braces `{}` to be eagerly evaluated. For example, for `{A} B`, the engine will first try to simplify `A`, then attempt to apply `B` to `A`, and finally try to simplify `B`.
+
+Braces specifying precedence are recursive. For example, for `A ({B} C)`, the engine will first try to simplify `B`, then attempt to apply `(B C)` to `A`.
+
+**Dollar Sign**
+
+The dollar sign `$` can be added before variables or expressions wrapped in parentheses `()` or braces `{}` to mask the internal precedence specified by the braces (but will not remove the braces). For example, for `A $({B} C)`, the engine will first attempt to apply `(B C)` to `A`, then try to simplify `B` in the remaining expression.
 
 ## EXAMPLE
 ```
-# ++ := \n.\f.\x. f(n f x)
-@ ++ 2
-```
+import "nature.lambda"
+import "control.lambda"
 
-将输出
+# list := make_list 1 (>=n 10) ++n
+@ fold (filter list prime?) 0 +n
 ```
-++ 2
-++ (\f.\x.f (f x))
-(\n.\f.\x.f (n f x)) (\f.\x.f (f x))
-\f.\x.f ((\f.\x.f (f x)) f x)
-\f.\x.f ((\x.f (f x)) x)
-\f.\x.f (f (f x))
+First, a list from 1 to 10 is generated, then it is filtered to keep only the prime numbers, and finally, the items are summed. This expression will generate the sum of primes within 10. (Relevant files are in the `lib/`)
+
+Corresponding output:
+```
+...
+beta>  \f.\x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f ((\x. x) x)))))))))))))))))
+beta>  \f.\x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))
+
+to be sought:     fold (filter list prime?) 0 +n
+result:           \f.\x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))
+step taken:       10563
+character count:  15009827
+time cost:        2036ms
 ```
