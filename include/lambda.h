@@ -8,6 +8,14 @@
 
 namespace lambda {
 
+  // priority of computing, used for reducing
+  enum class ComputationalPriority {
+    Lazy = -1,
+    Neutral = 0,
+    Eager = 1
+  };
+  ComputationalPriority remove_lazy(ComputationalPriority);
+
   enum class ReduceType {
     Null = 0,
     Alpha = 1,
@@ -15,6 +23,7 @@ namespace lambda {
     Delta = 3
   };
 
+  // priority syntactically, used for printing
   enum class Priority {
     Abstraction = 0,
     Application = 1,
@@ -31,18 +40,18 @@ namespace lambda {
     // beta and delta reduce
     virtual auto reduce(
       std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto to_string() -> std::string = 0;
@@ -51,19 +60,21 @@ namespace lambda {
 
     virtual auto clone() -> Expression* = 0;
     virtual auto clone(
-      bool new_computational_priority
+      ComputationalPriority new_computational_priority
     ) -> Expression* = 0;
 
     auto get_free_variables() -> std::unordered_set<std::string>&;
 
-    bool get_computational_priority();
-    virtual bool is_computational_priority(
-      std::unordered_multiset<std::string>&& bound_variables
+    virtual bool is_eager(
+      std::unordered_multiset<std::string>& bound_variables
     ) = 0;
-    void set_computational_priority(bool computational_priority);
+    virtual bool is_lazy() = 0;
+    void set_computational_priority(
+      ComputationalPriority computational_priority
+    );
 
   protected:
-    bool computational_priority_flag;
+    ComputationalPriority computational_priority_flag;
     std::unordered_set<std::string> free_variables;
 
     virtual ~Expression() = default;
@@ -73,7 +84,7 @@ namespace lambda {
   public:
     Variable(
       std::string literal, 
-      bool computational_priority = false
+      ComputationalPriority computational_priority = ComputationalPriority::Neutral
     );
     ~Variable() = default;
 
@@ -91,18 +102,18 @@ namespace lambda {
 
     auto reduce(
       std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto to_string() -> std::string override;
@@ -111,12 +122,13 @@ namespace lambda {
 
     auto clone() -> Expression* override;
     auto clone(
-      bool new_computational_priority
+      ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
-    bool is_computational_priority(
-      std::unordered_multiset<std::string>&& bound_variables
+    bool is_eager(
+      std::unordered_multiset<std::string>& bound_variables
     ) override;
+    bool is_lazy() override;
 
   private:
     std::string literal;
@@ -128,7 +140,7 @@ namespace lambda {
     static Abstraction* get_instance(
       Variable binder,
       Expression* body,
-      bool computational_priority = false
+      ComputationalPriority computational_priority = ComputationalPriority::Neutral
     );
     void delete_instance() override;
 
@@ -143,18 +155,18 @@ namespace lambda {
 
     auto reduce(
       std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto to_string() -> std::string override;
@@ -163,12 +175,13 @@ namespace lambda {
 
     auto clone() -> Expression* override;
     auto clone(
-      bool new_computational_priority
+      ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
-    bool is_computational_priority(
-      std::unordered_multiset<std::string>&& bound_variables
+    bool is_eager(
+      std::unordered_multiset<std::string>& bound_variables
     ) override;
+    bool is_lazy() override;
 
   private:
     Variable binder;
@@ -177,7 +190,7 @@ namespace lambda {
     Abstraction(
       Variable binder,
       Expression* body,
-      bool computational_priority
+      ComputationalPriority computational_priority
     );
     // delete non-recursively
     ~Abstraction() = default;
@@ -188,7 +201,7 @@ namespace lambda {
     static Application* get_instance(
       Expression* first,
       Expression* second,
-      bool computational_priority = false
+      ComputationalPriority computational_priority = ComputationalPriority::Neutral
     );
     void delete_instance() override;
 
@@ -199,18 +212,18 @@ namespace lambda {
 
     auto reduce(
       std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>&& bound_variables
+      std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto to_string() -> std::string override;
@@ -219,12 +232,13 @@ namespace lambda {
 
     auto clone() -> Expression* override;
     auto clone(
-      bool new_computational_priority
+      ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
-    bool is_computational_priority(
-      std::unordered_multiset<std::string>&& bound_variables
+    bool is_eager(
+      std::unordered_multiset<std::string>& bound_variables
     ) override;
+    bool is_lazy() override;
 
   private:
     Expression* first;
@@ -233,7 +247,7 @@ namespace lambda {
     Application(
       Expression* first,
       Expression* second,
-      bool computational_priority
+      ComputationalPriority computational_priority
     );
     ~Application() = default;
 
@@ -246,6 +260,8 @@ namespace lambda {
       std::unordered_map<std::string, Expression*>& symbol_table,
       std::unordered_multiset<std::string>& bound_variables
     ) -> std::pair<bool, ReduceType>;
+
+    void update_free_variables();
   };
 
   auto generate_church_number(unsigned number) -> Expression*;

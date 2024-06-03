@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <functional>
+#include <iostream>
 
 namespace lambda {
 
@@ -33,20 +34,29 @@ namespace lambda {
   }
 
 
+  ComputationalPriority remove_lazy(ComputationalPriority computational_priority) {
+    return computational_priority == ComputationalPriority::Lazy
+      ? ComputationalPriority::Neutral
+      : computational_priority
+    ;
+  }
+
+
   auto Expression::get_free_variables() -> std::unordered_set<std::string>& {
     return free_variables;
   }
 
-  bool Expression::get_computational_priority() {
-    return computational_priority_flag;
-  }
-
-  void Expression::set_computational_priority(bool computational_priority) {
+  void Expression::set_computational_priority(
+    ComputationalPriority computational_priority
+  ) {
     computational_priority_flag = computational_priority;
   }
 
 
-  Variable::Variable(std::string literal, bool computational_priority): literal(literal) {
+  Variable::Variable(
+    std::string literal, 
+    ComputationalPriority computational_priority
+  ) : literal(literal) {
     free_variables = { literal };
     computational_priority_flag = computational_priority;
   }
@@ -66,22 +76,24 @@ namespace lambda {
 
   auto Variable::reduce(
     std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
+    computational_priority_flag = remove_lazy(computational_priority_flag);
+
     if (!has(bound_variables, literal) && has(symbol_table, literal)) {
-      auto new_expr = symbol_table.find(literal)->second->clone(this->computational_priority_flag);
+      auto new_expr = symbol_table.find(literal)->second->clone(computational_priority_flag);
       delete this;
       return { new_expr, ReduceType::Delta };
     }
 
-    computational_priority_flag = false;
+    computational_priority_flag = ComputationalPriority::Neutral;
     return { this, ReduceType::Null };
   }
 
   auto Variable::replace(
     Variable& variable,
     Expression& expression,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     if (*this == variable) {
       auto new_expr = expression.clone(computational_priority_flag);
@@ -94,7 +106,7 @@ namespace lambda {
 
   auto Variable::apply(
     Expression& expression,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     return { this, ReduceType::Null };
   }
@@ -114,7 +126,7 @@ namespace lambda {
     );
   }
   auto Variable::clone(
-    bool new_computational_priority
+    ComputationalPriority new_computational_priority
   ) -> Expression* {
     return new Variable(
       literal,
@@ -122,17 +134,32 @@ namespace lambda {
     );
   }
 
-  bool Variable::is_computational_priority(
-    std::unordered_multiset<std::string>&& bound_variables
+  static bool is_number(std::string s) {
+    for (auto ch: s) {
+      if (ch < '0' || ch > '9') { return false; }
+    }
+    return true;
+  }
+
+  bool Variable::is_eager(
+    std::unordered_multiset<std::string>& bound_variables
   ) {
-    return !has(bound_variables, literal) && computational_priority_flag;
+    return 
+      !is_number(literal)
+      && !has(bound_variables, literal) 
+      && computational_priority_flag == ComputationalPriority::Eager
+    ;
+  }
+
+  bool Variable::is_lazy() {
+    return computational_priority_flag == ComputationalPriority::Lazy;
   }
 
 
   Abstraction::Abstraction(
     Variable binder,
     Expression* body,
-    bool computational_priority
+    ComputationalPriority computational_priority
   ): binder(binder), body(body) {
     free_variables = this->body->get_free_variables();
     free_variables.erase(this->binder.get_literal());
@@ -142,7 +169,7 @@ namespace lambda {
   Abstraction* Abstraction::get_instance(
     Variable binder,
     Expression *body,
-    bool computational_priority
+    ComputationalPriority computational_priority
   ) {
     return new Abstraction(binder, body, computational_priority);
   }
@@ -155,9 +182,11 @@ namespace lambda {
   auto Abstraction::alpha_reduce(
     Variable to
   ) -> Abstraction* {
+    // empty, alpha reduce do not care and should not care bound variables
+    std::unordered_multiset<std::string> bound_variables;
     auto new_expr = Abstraction::get_instance(
       to,
-      body->replace(binder, to, {} /* do not care and should not care */).first,
+      body->replace(binder, to, bound_variables).first,
       computational_priority_flag
     );
     delete this;
@@ -166,19 +195,23 @@ namespace lambda {
 
   auto Abstraction::reduce(
     std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
+    computational_priority_flag = remove_lazy(computational_priority_flag);
+
     bound_variables.emplace(binder.get_literal());
     auto [new_body, reduce_type] = body->reduce(
       symbol_table,
-      std::move(bound_variables)
+      bound_variables
     );
     bound_variables.erase(bound_variables.find(binder.get_literal()));
 
     auto new_expr = new Abstraction(
       binder,
       new_body,
-      (bool)reduce_type && computational_priority_flag
+      (bool)reduce_type 
+        ? computational_priority_flag
+        : ComputationalPriority::Neutral
     );
     delete this;
     return { new_expr, reduce_type };
@@ -187,7 +220,7 @@ namespace lambda {
   auto Abstraction::replace(
     Variable& variable,
     Expression& expression,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     if (variable == binder) {
       return { this, ReduceType::Null };
@@ -196,13 +229,17 @@ namespace lambda {
     if (has(expression.get_free_variables(), binder.get_literal())) {
       for (int i = 0;; i++) {
         std::string new_literal = index_to_string(i);
-        if (!has(bound_variables, new_literal)) {
+        if (
+          !has(bound_variables, new_literal) 
+          && !has(free_variables, new_literal)
+          && new_literal != binder.get_literal()
+        ) {
           return this->alpha_reduce(
             Variable(new_literal)
           )->replace(
             variable,
             expression,
-            std::move(bound_variables)
+            bound_variables
           );
         }
       }
@@ -212,7 +249,7 @@ namespace lambda {
     auto [new_body, reduce_type] = body->replace(
       variable,
       expression,
-      std::move(bound_variables)
+      bound_variables
     );
     bound_variables.erase(bound_variables.find(binder.get_literal()));
 
@@ -227,13 +264,13 @@ namespace lambda {
 
   auto Abstraction::apply(
     Expression& expression,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     bound_variables.emplace(binder.get_literal());
     auto result = body->replace(
       binder,
       expression,
-      std::move(bound_variables)
+      bound_variables
     ).first;
     result->set_computational_priority(computational_priority_flag);
     bound_variables.erase(bound_variables.find(binder.get_literal()));
@@ -262,7 +299,7 @@ namespace lambda {
     );
   }
   auto Abstraction::clone(
-    bool new_computational_priority
+    ComputationalPriority new_computational_priority
   ) -> Expression* {
     return new Abstraction(
       binder,
@@ -271,20 +308,24 @@ namespace lambda {
     );
   }
 
-  bool Abstraction::is_computational_priority(
-    std::unordered_multiset<std::string>&& bound_variables
+  bool Abstraction::is_eager(
+    std::unordered_multiset<std::string>& bound_variables
   ) {
+    if (is_lazy()) return false;
     for(auto free_variable: free_variables) {
       if (has(bound_variables, free_variable)) { return false; }
     }
-    return computational_priority_flag;
+    return computational_priority_flag == ComputationalPriority::Eager;
   }
 
+  bool Abstraction::is_lazy() {
+    return computational_priority_flag == ComputationalPriority::Lazy;
+  }
 
   Application::Application(
     Expression* first,
     Expression* second,
-    bool computational_priority
+    ComputationalPriority computational_priority
   ): first(first), second(second) {
     free_variables = this->first->get_free_variables()
       + this->second->get_free_variables();
@@ -294,7 +335,7 @@ namespace lambda {
   Application* Application::get_instance(
     Expression* first,
     Expression* second,
-    bool computational_priority
+    ComputationalPriority computational_priority
   ) {
     return new Application(first, second, computational_priority);
   }
@@ -309,11 +350,15 @@ namespace lambda {
     std::unordered_map<std::string, Expression*>& symbol_table,
     std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<bool, ReduceType> {
-    auto pair = first->reduce(symbol_table, std::move(bound_variables));
+    auto pair = first->reduce(symbol_table, bound_variables);
     first = pair.first;
     auto reduce_type = pair.second;
 
-    computational_priority_flag = (bool)reduce_type && computational_priority_flag;
+    computational_priority_flag = (bool)reduce_type 
+      ? computational_priority_flag
+      : ComputationalPriority::Neutral;
+    update_free_variables();
+
     return { (bool)reduce_type, reduce_type };
   }
 
@@ -321,39 +366,59 @@ namespace lambda {
     std::unordered_map<std::string, Expression*>& symbol_table,
     std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<bool, ReduceType> {
-    auto pair = second->reduce(symbol_table, std::move(bound_variables));
+    auto pair = second->reduce(symbol_table, bound_variables);
     second = pair.first;
     auto reduce_type = pair.second;
 
-    computational_priority_flag = (bool)reduce_type && computational_priority_flag;
+    computational_priority_flag = (bool)reduce_type 
+      ? computational_priority_flag
+      : ComputationalPriority::Neutral;
+    update_free_variables();
+
     return { (bool)reduce_type, reduce_type };
+  }
+
+  void Application::update_free_variables() {
+    free_variables = this->first->get_free_variables()
+      + this->second->get_free_variables();
   }
 
   auto Application::reduce(
     std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
-    if (first->is_computational_priority(std::move(bound_variables))) {
+    computational_priority_flag = remove_lazy(computational_priority_flag);
+
+    if (first->is_eager(bound_variables)) {
       auto pair = reduce_first(symbol_table, bound_variables);
       if (pair.first) return { this, pair.second };
     }
-    else if (second->is_computational_priority(std::move(bound_variables))) {
+    if (second->is_eager(bound_variables)) {
       auto pair = reduce_second(symbol_table, bound_variables);
       if (pair.first) return { this, pair.second };
     }
-    
-    auto [new_expr, reduce_type] = first->apply(*second, std::move(bound_variables));
+
+    auto [new_expr, reduce_type] = first->apply(*second, bound_variables);
     if ((bool)reduce_type) {
       new_expr->set_computational_priority(computational_priority_flag);
       delete this;
       return {new_expr, reduce_type};
     }
-    
-    auto pair = reduce_first(symbol_table, bound_variables);
-    if (pair.first) return { this, pair.second };
 
-    pair = reduce_second(symbol_table, bound_variables);
-    if (pair.first) return { this, pair.second };
+    if (first->is_lazy()) {
+      auto pair = reduce_second(symbol_table, bound_variables);
+      if (pair.first) return { this, pair.second };
+
+      pair = reduce_first(symbol_table, bound_variables);
+      if (pair.first) return { this, pair.second };
+    }
+    else {
+      auto pair = reduce_first(symbol_table, bound_variables);
+      if (pair.first) return { this, pair.second };
+
+      pair = reduce_second(symbol_table, bound_variables);
+      if (pair.first) return { this, pair.second };
+    }
 
     return { this, ReduceType::Null };
   }
@@ -361,21 +426,23 @@ namespace lambda {
   auto Application::replace(
     Variable& variable,
     Expression& expression,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     auto [new_first, first_reduce_type] = first->replace(
       variable,
       expression,
-      std::move(bound_variables)
+      bound_variables
     );
     first = new_first;
 
     auto [new_second, second_reduce_type] = second->replace(
       variable,
       expression,
-      std::move(bound_variables)
+      bound_variables
     );
     second = new_second;
+
+    update_free_variables();
 
     return {
       this,
@@ -387,7 +454,7 @@ namespace lambda {
 
   auto Application::apply(
     Expression& expression,
-    std::unordered_multiset<std::string>&& bound_variables
+    std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     return { this, ReduceType::Null };
   }
@@ -422,7 +489,7 @@ namespace lambda {
     );
   }
   auto Application::clone(
-    bool new_computational_priority
+    ComputationalPriority new_computational_priority
   ) -> Expression* {
     return new Application(
       first->clone(),
@@ -431,15 +498,19 @@ namespace lambda {
     );
   }
 
-  bool Application::is_computational_priority(
-    std::unordered_multiset<std::string>&& bound_variables
+  bool Application::is_eager(
+    std::unordered_multiset<std::string>& bound_variables
   ) {
-    return computational_priority_flag
-      || first->is_computational_priority(std::move(bound_variables))
-      || second->is_computational_priority(std::move(bound_variables))
+    if (is_lazy()) return false;
+    return computational_priority_flag == ComputationalPriority::Eager
+      || first->is_eager(bound_variables)
+      || second->is_eager(bound_variables)
     ;
   }
 
+  bool Application::is_lazy() {
+    return computational_priority_flag == ComputationalPriority::Lazy;
+  }
 
   static auto generate_church_number_body(unsigned number) -> Expression* {
     if (number == 0) { return new Variable("x"); }
@@ -483,9 +554,11 @@ namespace lambda {
 
     unsigned long long step;
 
+
     auto msec = msec_count([&]() {
       for (step = 0;; step++) {
-        auto pair = expr->reduce(symbol_table, {});
+        std::unordered_multiset<std::string> bound_variables;
+        auto pair = expr->reduce(symbol_table, bound_variables);
         expr = pair.first;
         auto reduce_type = pair.second;
 
@@ -495,11 +568,12 @@ namespace lambda {
       }
     });
 
-    result_string += "\nto be sought:    " + expression->to_string() + "\n"
-                  +    "result:          " + expr->to_string() + "\n"
-                  +    "step taken:      " + std::to_string(step) + "\n"
-                  +    "character count: " + std::to_string(result_string.length()) + "\n"
-                  +    "time cost:       " + std::to_string(msec) + "ms" +"\n";
+
+    result_string += "\nto be sought:     " + expression->to_string() + "\n"
+                  +    "result:           " + expr->to_string() + "\n"
+                  +    "step taken:       " + std::to_string(step) + "\n"
+                  +    "character count:  " + std::to_string(result_string.length()) + "\n"
+                  +    "time cost:        " + std::to_string(msec) + "ms" +"\n";
 
     return {result_string, expr};
   }

@@ -75,10 +75,14 @@ application
 
 atomic
   : variable            { $$ = $1; }
-  | '(' abstraction ')' { $$ = $2; }
-  | '{' abstraction '}' { 
+  | '(' expression ')' { $$ = $2; }
+  | '{' expression '}' { 
     $$ = $2; 
-    $$->set_computational_priority(true);
+    $$->set_computational_priority(lambda::ComputationalPriority::Eager);
+  }
+  | '$' atomic { 
+    $$ = $2; 
+    $$->set_computational_priority(lambda::ComputationalPriority::Lazy);
   }
 ;
 
