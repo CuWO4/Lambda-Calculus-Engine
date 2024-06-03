@@ -40,6 +40,13 @@ lambda [INPUT] [OUTPUT]
 
 `\`, `@`, `#`, `.`, `:=`, `(`, `)` `{`, `}`, `$`.
 
+#### Comments
+
+```
+// line comment
+```
+
+
 #### Statements
 
 ```
