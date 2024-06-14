@@ -29,10 +29,11 @@ Compile Environment:
 ## USAGE
 
 ```bash
-lambda [INPUT] [OUTPUT]
+lambda [INPUT] [-o OUTPUT] [-i]
 ```
 * `[INPUT]` Source file, see [GRAMMAR](#grammar) for syntax.
 * `[OUTPUT]` Output file to store the derivation process. Optional, default is `stdout`.
+* `-i` display the intermedia process of derivation. Optional.
 
 ## GRAMMAR
 
