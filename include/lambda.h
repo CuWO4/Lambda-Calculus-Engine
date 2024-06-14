@@ -3,8 +3,8 @@
 
 #include <utility>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
+#include <map>
+#include <set>
 
 namespace lambda {
 
@@ -39,19 +39,19 @@ namespace lambda {
 
     // beta and delta reduce
     virtual auto reduce(
-      std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>& bound_variables
+      std::map<std::string, Expression*>& symbol_table,
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> = 0;
 
     virtual auto to_string() -> std::string = 0;
@@ -63,10 +63,10 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* = 0;
 
-    auto get_free_variables() -> std::unordered_set<std::string>&;
+    auto get_free_variables() -> std::set<std::string>&;
 
     virtual bool is_eager(
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) = 0;
     virtual bool is_lazy() = 0;
     void set_computational_priority(
@@ -75,7 +75,7 @@ namespace lambda {
 
   protected:
     ComputationalPriority computational_priority_flag;
-    std::unordered_set<std::string> free_variables;
+    std::set<std::string> free_variables;
 
     virtual ~Expression() = default;
   };
@@ -101,19 +101,19 @@ namespace lambda {
     auto get_literal() -> std::string&;
 
     auto reduce(
-      std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>& bound_variables
+      std::map<std::string, Expression*>& symbol_table,
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto to_string() -> std::string override;
@@ -126,7 +126,7 @@ namespace lambda {
     ) -> Expression* override;
 
     bool is_eager(
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) override;
     bool is_lazy() override;
 
@@ -154,19 +154,19 @@ namespace lambda {
     ) -> Abstraction*;
 
     auto reduce(
-      std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>& bound_variables
+      std::map<std::string, Expression*>& symbol_table,
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto to_string() -> std::string override;
@@ -179,7 +179,7 @@ namespace lambda {
     ) -> Expression* override;
 
     bool is_eager(
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) override;
     bool is_lazy() override;
 
@@ -211,19 +211,19 @@ namespace lambda {
     Application& operator=(Application&& other) = default;
 
     auto reduce(
-      std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>& bound_variables
+      std::map<std::string, Expression*>& symbol_table,
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto replace(
       Variable& variable,
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto apply(
       Expression& expression,
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<Expression*, ReduceType> override;
 
     auto to_string() -> std::string override;
@@ -236,7 +236,7 @@ namespace lambda {
     ) -> Expression* override;
 
     bool is_eager(
-      std::unordered_multiset<std::string>& bound_variables
+      std::multiset<std::string>& bound_variables
     ) override;
     bool is_lazy() override;
 
@@ -252,13 +252,13 @@ namespace lambda {
     ~Application() = default;
 
     auto reduce_first(
-      std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>& bound_variables
+      std::map<std::string, Expression*>& symbol_table,
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<bool, ReduceType>;
 
     auto reduce_second(
-      std::unordered_map<std::string, Expression*>& symbol_table,
-      std::unordered_multiset<std::string>& bound_variables
+      std::map<std::string, Expression*>& symbol_table,
+      std::multiset<std::string>& bound_variables
     ) -> std::pair<bool, ReduceType>;
 
     void update_free_variables();
@@ -269,15 +269,15 @@ namespace lambda {
   class Reducer {
   public:
     auto reduce(
-      Expression* expression
-    ) -> std::pair<std::string, Expression*>;
+      Expression* expression, FILE* out_stream, bool display_process
+    ) -> Expression*;
 
     void register_symbol(std::string literal, Expression* expression);
 
     ~Reducer();
 
   private:
-    std::unordered_map<std::string, Expression*> symbol_table;
+    std::map<std::string, Expression*> symbol_table;
   };
 
 }

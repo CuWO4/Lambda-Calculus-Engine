@@ -9,11 +9,19 @@ BFLAGS := -d
 LDFLAGS :=
 
 # Debug flags
-DEBUG ?= 1
+DEBUG ?= 0
 ifeq ($(DEBUG), 0)
 CXXFLAGS += -O2
 else
 CXXFLAGS += -g -O0
+endif
+
+# Profile flag
+PROFILE ?= 0
+ifeq ($(PROFILE), 0)
+PROFILEFLAG :=
+else
+PROFILEFLAG := -pg
 endif
 
 # Compilers
@@ -41,11 +49,11 @@ CPPFLAGS = $(INC_FLAGS) -MMD -MP
 
 # Main target
 $(BUILD_DIR)/$(TARGET_EXEC): $(FB_SRCS) $(OBJS)
-	$(CXX) $(OBJS) $(LDFLAGS) -o $@
+	$(CXX) $(OBJS) $(LDFLAGS) $(PROFILEFLAG) -o $@
 
 # C++ source
 define cxx_recipe
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROFILEFLAG) -c $< -o $@
 endef
 $(BUILD_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR); $(cxx_recipe)
 $(BUILD_DIR)/%.cpp.o: $(BUILD_DIR)/%.cpp | $(BUILD_DIR); $(cxx_recipe)
@@ -70,4 +78,4 @@ clean:
 	-rm -rf $(BUILD_DIR)
 
 test: $(BUILD_DIR)/$(TARGET_EXEC)
-	./$(BUILD_DIR)/$(TARGET_EXEC) lib/test.lambda lib/test.out
+	./$(BUILD_DIR)/$(TARGET_EXEC) lib/test.lambda -o lib/test.out

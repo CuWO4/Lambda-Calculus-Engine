@@ -7,9 +7,9 @@ namespace lambda {
 
   template <typename T>
   static auto operator+(
-    std::unordered_set<T>& a,
-    std::unordered_set<T>& b
-  ) -> std::unordered_set<T> {
+    std::set<T>& a,
+    std::set<T>& b
+  ) -> std::set<T> {
     auto result = a;
     result.insert(b.begin(), b.end());
     return result;
@@ -49,7 +49,7 @@ namespace lambda {
   }
 
 
-  auto Expression::get_free_variables() -> std::unordered_set<std::string>& {
+  auto Expression::get_free_variables() -> std::set<std::string>& {
     return free_variables;
   }
 
@@ -82,8 +82,8 @@ namespace lambda {
   auto Variable::get_literal() -> std::string& { return literal; }
 
   auto Variable::reduce(
-    std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>& bound_variables
+    std::map<std::string, Expression*>& symbol_table,
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     computational_priority_flag = remove_lazy(computational_priority_flag);
 
@@ -107,7 +107,7 @@ namespace lambda {
   auto Variable::replace(
     Variable& variable,
     Expression& expression,
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     if (*this == variable) {
       auto new_expr = expression.clone(computational_priority_flag);
@@ -120,7 +120,7 @@ namespace lambda {
 
   auto Variable::apply(
     Expression& expression,
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     return { this, ReduceType::Null };
   }
@@ -149,7 +149,7 @@ namespace lambda {
   }
   
   bool Variable::is_eager(
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) {
     return 
       !is_number(literal)
@@ -190,7 +190,7 @@ namespace lambda {
     Variable to
   ) -> Abstraction* {
     // empty, alpha reduce do not care and should not care bound variables
-    std::unordered_multiset<std::string> bound_variables;
+    std::multiset<std::string> bound_variables;
     auto new_expr = Abstraction::get_instance(
       to,
       body->replace(binder, to, bound_variables).first,
@@ -201,8 +201,8 @@ namespace lambda {
   }
 
   auto Abstraction::reduce(
-    std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>& bound_variables
+    std::map<std::string, Expression*>& symbol_table,
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     computational_priority_flag = remove_lazy(computational_priority_flag);
 
@@ -227,7 +227,7 @@ namespace lambda {
   auto Abstraction::replace(
     Variable& variable,
     Expression& expression,
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     if (variable == binder) {
       return { this, ReduceType::Null };
@@ -271,7 +271,7 @@ namespace lambda {
 
   auto Abstraction::apply(
     Expression& expression,
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     bound_variables.emplace(binder.get_literal());
     auto result = body->replace(
@@ -316,7 +316,7 @@ namespace lambda {
   }
 
   bool Abstraction::is_eager(
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) {
     if (is_lazy()) return false;
     for(auto free_variable: free_variables) {
@@ -354,8 +354,8 @@ namespace lambda {
   }
 
   auto Application::reduce_first(
-    std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>& bound_variables
+    std::map<std::string, Expression*>& symbol_table,
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<bool, ReduceType> {
     auto pair = first->reduce(symbol_table, bound_variables);
     first = pair.first;
@@ -370,8 +370,8 @@ namespace lambda {
   }
 
   auto Application::reduce_second(
-    std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>& bound_variables
+    std::map<std::string, Expression*>& symbol_table,
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<bool, ReduceType> {
     auto pair = second->reduce(symbol_table, bound_variables);
     second = pair.first;
@@ -391,8 +391,8 @@ namespace lambda {
   }
 
   auto Application::reduce(
-    std::unordered_map<std::string, Expression*>& symbol_table,
-    std::unordered_multiset<std::string>& bound_variables
+    std::map<std::string, Expression*>& symbol_table,
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     computational_priority_flag = remove_lazy(computational_priority_flag);
 
@@ -433,7 +433,7 @@ namespace lambda {
   auto Application::replace(
     Variable& variable,
     Expression& expression,
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     ReduceType first_reduce_type, second_reduce_type;
 
@@ -461,7 +461,7 @@ namespace lambda {
 
   auto Application::apply(
     Expression& expression,
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
     return { this, ReduceType::Null };
   }
@@ -506,7 +506,7 @@ namespace lambda {
   }
 
   bool Application::is_eager(
-    std::unordered_multiset<std::string>& bound_variables
+    std::multiset<std::string>& bound_variables
   ) {
     if (is_lazy()) return false;
     return computational_priority_flag == ComputationalPriority::Eager
@@ -545,6 +545,14 @@ namespace lambda {
     else /* reduce_type == ReduceType::NoReduce */ { return ""; }
   }
 
+  static void string_println(std::string& s, FILE* out) {
+    fprintf(out, "%s\n", s.c_str());
+  }
+
+  static void string_println(std::string&& s, FILE* out) {
+    fprintf(out, "%s\n", s.c_str());
+  }
+
   clock_t msec_count(std::function<void(void)> func) {
     auto start_time = clock();
     func();
@@ -553,36 +561,45 @@ namespace lambda {
   }
 
   auto Reducer::reduce(
-     Expression* expression
-  ) -> std::pair<std::string, Expression*> {
+     Expression* expression, FILE* out, bool display_process
+  ) -> Expression* {
 
-    auto result_string = expression->to_string() + "\n";
+    string_println(expression->to_string(), out);
+    fprintf(out, "\n");
+    
     auto expr = expression->clone();
 
     unsigned long long step;
-
+    unsigned long long character_count = 0;
 
     auto msec = msec_count([&]() {
       for (step = 0;; step++) {
-        std::unordered_multiset<std::string> bound_variables;
+        std::multiset<std::string> bound_variables;
         auto pair = expr->reduce(symbol_table, bound_variables);
         expr = pair.first;
         auto reduce_type = pair.second;
 
         if (reduce_type == ReduceType::Null) { break; }
 
-        result_string += reduce_type_to_header(reduce_type) + expr->to_string() + "\n";
+        if (display_process) {
+          auto&& str = reduce_type_to_header(reduce_type) + expr->to_string();
+          character_count += str.length();
+          string_println(str, out);
+        }
       }
     });
 
+    fprintf(out, "\n");
+    string_println("to be sought:     " + expression->to_string(), out);
+    string_println("result:           " + expr->to_string(), out);
+    string_println("step taken:       " + std::to_string(step), out);
+    if (display_process) {
+      string_println("character count:  " + std::to_string(character_count), out);
+    }
+    string_println("time cost:        " + std::to_string(msec) + "ms", out);
+    fprintf(out, "\n");
 
-    result_string += "\nto be sought:     " + expression->to_string() + "\n"
-                  +    "result:           " + expr->to_string() + "\n"
-                  +    "step taken:       " + std::to_string(step) + "\n"
-                  +    "character count:  " + std::to_string(result_string.length()) + "\n"
-                  +    "time cost:        " + std::to_string(msec) + "ms" +"\n";
-
-    return {result_string, expr};
+    return expr;
   }
 
 

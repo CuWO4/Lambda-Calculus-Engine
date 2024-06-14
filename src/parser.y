@@ -4,10 +4,11 @@
   #include <memory>
 
   int yylex();
-  void yyerror(FILE* out, const char* s);
+  void yyerror(FILE* out, bool display_process, const char* s);
 }
 
 %parse-param  { FILE* out }
+%parse-param  { bool display_process }
 
 %{
   #include "lambda.h"
@@ -51,8 +52,7 @@ definition
 
 solution
   : '@' expression { 
-    auto [path_string, _] = reducer.reduce($2); 
-    fprintf(out, "%s\n", path_string.c_str());
+    reducer.reduce($2, out, display_process); 
   }
 ;
 
@@ -92,6 +92,6 @@ variable
 
 %%
 
-void yyerror(FILE* out, const char* s) {
+void yyerror(FILE* out, bool display_process, const char* s) {
   throw std::runtime_error(s);
 }
