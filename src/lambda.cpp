@@ -2,7 +2,6 @@
 
 #include <ctime>
 #include <functional>
-#include <iostream>
 
 namespace lambda {
 
@@ -436,19 +435,19 @@ namespace lambda {
     Expression& expression,
     std::unordered_multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
-    auto [new_first, first_reduce_type] = first->replace(
-      variable,
-      expression,
-      bound_variables
-    );
-    first = new_first;
+    ReduceType first_reduce_type, second_reduce_type;
 
-    auto [new_second, second_reduce_type] = second->replace(
+    std::tie(first, first_reduce_type) = first->replace(
       variable,
       expression,
       bound_variables
     );
-    second = new_second;
+
+    std::tie(second, second_reduce_type) = second->replace(
+      variable,
+      expression,
+      bound_variables
+    );
 
     update_free_variables();
 

@@ -68,3 +68,6 @@ DEPS := $(OBJS:.o=.d)
 
 clean:
 	-rm -rf $(BUILD_DIR)
+
+test: $(BUILD_DIR)/$(TARGET_EXEC)
+	./$(BUILD_DIR)/$(TARGET_EXEC) lib/test.lambda lib/test.out
