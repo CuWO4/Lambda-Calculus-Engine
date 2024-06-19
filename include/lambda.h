@@ -75,7 +75,10 @@ namespace lambda {
 
   protected:
     ComputationalPriority computational_priority_flag;
+
+    bool is_free_variables_updated;
     std::set<std::string> free_variables;
+    virtual void update_free_variables() = 0;
 
     virtual ~Expression() = default;
   };
@@ -130,14 +133,16 @@ namespace lambda {
     ) override;
     bool is_lazy() override;
 
+  protected:
+    void update_free_variables() override;
+
   private:
     std::string literal;
   };
 
   class Abstraction: public Expression {
   public:
-    // to make sure all instance is alloced dynamically
-    static Abstraction* get_instance(
+    Abstraction(
       Variable binder,
       Expression* body,
       ComputationalPriority computational_priority = ComputationalPriority::Neutral
@@ -183,22 +188,20 @@ namespace lambda {
     ) override;
     bool is_lazy() override;
 
+  protected:
+    void update_free_variables() override;
+
   private:
     Variable binder;
     Expression* body;
 
-    Abstraction(
-      Variable binder,
-      Expression* body,
-      ComputationalPriority computational_priority
-    );
     // delete non-recursively
     ~Abstraction() = default;
   };
 
   class Application: public Expression {
   public:
-    static Application* get_instance(
+    Application(
       Expression* first,
       Expression* second,
       ComputationalPriority computational_priority = ComputationalPriority::Neutral
@@ -240,15 +243,13 @@ namespace lambda {
     ) override;
     bool is_lazy() override;
 
+  protected:
+    void update_free_variables() override;
+
   private:
     Expression* first;
     Expression* second;
 
-    Application(
-      Expression* first,
-      Expression* second,
-      ComputationalPriority computational_priority
-    );
     ~Application() = default;
 
     auto reduce_first(
@@ -260,8 +261,6 @@ namespace lambda {
       std::map<std::string, Expression*>& symbol_table,
       std::multiset<std::string>& bound_variables
     ) -> std::pair<bool, ReduceType>;
-
-    void update_free_variables();
   };
 
   auto generate_church_number(unsigned number) -> Expression*;

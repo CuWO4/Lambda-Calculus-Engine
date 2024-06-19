@@ -60,7 +60,7 @@ expression: abstraction ;
 
 abstraction
   : '\\' variable '.' expression {
-    $$ = lambda::Abstraction::get_instance(*$2, $4);
+    $$ = new lambda::Abstraction(*$2, $4);
     delete $2;
   } 
   | application 
@@ -68,7 +68,7 @@ abstraction
 
 application
   : application atomic {
-    $$ = lambda::Application::get_instance($1, $2);
+    $$ = new lambda::Application($1, $2);
   }
   | atomic
 ;

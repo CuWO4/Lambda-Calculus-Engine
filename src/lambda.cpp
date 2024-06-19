@@ -50,6 +50,7 @@ namespace lambda {
 
 
   auto Expression::get_free_variables() -> std::set<std::string>& {
+    update_free_variables();
     return free_variables;
   }
 
@@ -64,7 +65,6 @@ namespace lambda {
     std::string literal, 
     ComputationalPriority computational_priority
   ) : literal(literal) {
-    free_variables = { literal };
     computational_priority_flag = computational_priority;
   }
 
@@ -152,14 +152,22 @@ namespace lambda {
     std::multiset<std::string>& bound_variables
   ) {
     return 
-      !is_number(literal)
+      computational_priority_flag == ComputationalPriority::Eager
       && !has(bound_variables, literal) 
-      && computational_priority_flag == ComputationalPriority::Eager
+      && !is_number(literal)
     ;
   }
 
   bool Variable::is_lazy() {
     return computational_priority_flag == ComputationalPriority::Lazy;
+  }
+
+  void Variable::update_free_variables() {
+    if (is_free_variables_updated) { return; }
+
+    free_variables = { literal };
+      
+    is_free_variables_updated = true;
   }
 
 
@@ -168,17 +176,7 @@ namespace lambda {
     Expression* body,
     ComputationalPriority computational_priority
   ): binder(binder), body(body) {
-    free_variables = this->body->get_free_variables();
-    free_variables.erase(this->binder.get_literal());
     computational_priority_flag = computational_priority;
-  }
-
-  Abstraction* Abstraction::get_instance(
-    Variable binder,
-    Expression *body,
-    ComputationalPriority computational_priority
-  ) {
-    return new Abstraction(binder, body, computational_priority);
   }
 
   void Abstraction::delete_instance() {
@@ -191,7 +189,7 @@ namespace lambda {
   ) -> Abstraction* {
     // empty, alpha reduce do not care and should not care bound variables
     std::multiset<std::string> bound_variables;
-    auto new_expr = Abstraction::get_instance(
+    auto new_expr = new Abstraction(
       to,
       body->replace(binder, to, bound_variables).first,
       computational_priority_flag
@@ -329,22 +327,23 @@ namespace lambda {
     return computational_priority_flag == ComputationalPriority::Lazy;
   }
 
+  void Abstraction::update_free_variables() {
+    if (is_free_variables_updated) { return; }
+
+    free_variables = this->body->get_free_variables();
+    free_variables.erase(this->binder.get_literal());
+      
+    is_free_variables_updated = true;
+  }
+
+
+
   Application::Application(
     Expression* first,
     Expression* second,
     ComputationalPriority computational_priority
   ): first(first), second(second) {
-    free_variables = this->first->get_free_variables()
-      + this->second->get_free_variables();
     computational_priority_flag = computational_priority;
-  }
-
-  Application* Application::get_instance(
-    Expression* first,
-    Expression* second,
-    ComputationalPriority computational_priority
-  ) {
-    return new Application(first, second, computational_priority);
   }
 
   void Application::delete_instance() {
@@ -364,7 +363,7 @@ namespace lambda {
     computational_priority_flag = (bool)reduce_type 
       ? computational_priority_flag
       : ComputationalPriority::Neutral;
-    update_free_variables();
+    is_free_variables_updated = false;
 
     return { (bool)reduce_type, reduce_type };
   }
@@ -380,14 +379,9 @@ namespace lambda {
     computational_priority_flag = (bool)reduce_type 
       ? computational_priority_flag
       : ComputationalPriority::Neutral;
-    update_free_variables();
+    is_free_variables_updated = false;
 
     return { (bool)reduce_type, reduce_type };
-  }
-
-  void Application::update_free_variables() {
-    free_variables = this->first->get_free_variables()
-      + this->second->get_free_variables();
   }
 
   auto Application::reduce(
@@ -448,8 +442,6 @@ namespace lambda {
       expression,
       bound_variables
     );
-
-    update_free_variables();
 
     return {
       this,
@@ -519,19 +511,29 @@ namespace lambda {
     return computational_priority_flag == ComputationalPriority::Lazy;
   }
 
+  void Application::update_free_variables() {
+    if (is_free_variables_updated) { return; }
+
+    free_variables = this->first->get_free_variables()
+      + this->second->get_free_variables();
+
+    is_free_variables_updated = true;
+  }
+
+
   static auto generate_church_number_body(unsigned number) -> Expression* {
     if (number == 0) { return new Variable("x"); }
 
-    return Application::get_instance(
+    return new Application(
       new Variable("f"),
       generate_church_number_body(number - 1)
     );
   }
 
   auto generate_church_number(unsigned number) -> Expression* {
-    return Abstraction::get_instance(
+    return new Abstraction(
       Variable("f"),
-      Abstraction::get_instance(
+      new Abstraction(
         Variable("x"),
         generate_church_number_body(number)
       )
