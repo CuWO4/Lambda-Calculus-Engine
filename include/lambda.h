@@ -33,6 +33,8 @@ namespace lambda {
   class Variable;
   class Expression {
   public:
+    Expression(ComputationalPriority computational_priority);
+
     // delete this recursively
     // crash when this is not allocated dynamically
     virtual void delete_instance() = 0;
@@ -68,7 +70,7 @@ namespace lambda {
     virtual bool is_eager(
       std::multiset<std::string>& bound_variables
     ) = 0;
-    virtual bool is_lazy() = 0;
+    bool is_lazy();
     void set_computational_priority(
       ComputationalPriority computational_priority
     );
@@ -79,6 +81,8 @@ namespace lambda {
     bool is_free_variables_updated;
     std::set<std::string> free_variables;
     virtual void update_free_variables() = 0;
+
+    bool is_normal_form;
 
     virtual ~Expression() = default;
   };
@@ -131,7 +135,6 @@ namespace lambda {
     bool is_eager(
       std::multiset<std::string>& bound_variables
     ) override;
-    bool is_lazy() override;
 
   protected:
     void update_free_variables() override;
@@ -186,7 +189,6 @@ namespace lambda {
     bool is_eager(
       std::multiset<std::string>& bound_variables
     ) override;
-    bool is_lazy() override;
 
   protected:
     void update_free_variables() override;
@@ -241,7 +243,6 @@ namespace lambda {
     bool is_eager(
       std::multiset<std::string>& bound_variables
     ) override;
-    bool is_lazy() override;
 
   protected:
     void update_free_variables() override;

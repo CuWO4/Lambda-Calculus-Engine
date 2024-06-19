@@ -40,7 +40,6 @@ namespace lambda {
   }
 
 
-
   ComputationalPriority remove_lazy(ComputationalPriority computational_priority) {
     return computational_priority == ComputationalPriority::Lazy
       ? ComputationalPriority::Neutral
@@ -48,6 +47,9 @@ namespace lambda {
     ;
   }
 
+
+  Expression::Expression(ComputationalPriority computational_priority)
+    : computational_priority_flag(computational_priority), is_normal_form(false) {}
 
   auto Expression::get_free_variables() -> std::set<std::string>& {
     update_free_variables();
@@ -60,13 +62,15 @@ namespace lambda {
     computational_priority_flag = computational_priority;
   }
 
+  bool Expression::is_lazy() {
+    return computational_priority_flag == ComputationalPriority::Lazy;
+  }
+
 
   Variable::Variable(
     std::string literal, 
     ComputationalPriority computational_priority
-  ) : literal(literal) {
-    computational_priority_flag = computational_priority;
-  }
+  ) : Expression(computational_priority), literal(literal) {}
 
   void Variable::delete_instance() {
     delete this;
@@ -85,6 +89,10 @@ namespace lambda {
     std::map<std::string, Expression*>& symbol_table,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
+    if (is_normal_form) { 
+      return { this, ReduceType::Null }; 
+    }
+
     computational_priority_flag = remove_lazy(computational_priority_flag);
 
     if (is_number(literal)) {
@@ -101,6 +109,7 @@ namespace lambda {
     }
 
     computational_priority_flag = ComputationalPriority::Neutral;
+    is_normal_form = true;
     return { this, ReduceType::Null };
   }
 
@@ -158,10 +167,6 @@ namespace lambda {
     ;
   }
 
-  bool Variable::is_lazy() {
-    return computational_priority_flag == ComputationalPriority::Lazy;
-  }
-
   void Variable::update_free_variables() {
     if (is_free_variables_updated) { return; }
 
@@ -175,9 +180,7 @@ namespace lambda {
     Variable binder,
     Expression* body,
     ComputationalPriority computational_priority
-  ): binder(binder), body(body) {
-    computational_priority_flag = computational_priority;
-  }
+  ): Expression(computational_priority), binder(binder), body(body) {}
 
   void Abstraction::delete_instance() {
     body->delete_instance();
@@ -202,6 +205,10 @@ namespace lambda {
     std::map<std::string, Expression*>& symbol_table,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
+    if (is_normal_form) { 
+      return { this, ReduceType::Null }; 
+    }
+
     computational_priority_flag = remove_lazy(computational_priority_flag);
 
     bound_variables.emplace(binder.get_literal());
@@ -211,15 +218,16 @@ namespace lambda {
     );
     bound_variables.erase(bound_variables.find(binder.get_literal()));
 
-    auto new_expr = new Abstraction(
-      binder,
-      new_body,
-      (bool)reduce_type 
-        ? computational_priority_flag
-        : ComputationalPriority::Neutral
-    );
-    delete this;
-    return { new_expr, reduce_type };
+    if (reduce_type == ReduceType::Null) {
+      computational_priority_flag = ComputationalPriority::Neutral;
+      is_normal_form = true;
+      return { this, ReduceType::Null }; 
+    }
+    else {
+      body = new_body;
+      is_free_variables_updated = false;
+      return { this, reduce_type };
+    }
   }
 
   auto Abstraction::replace(
@@ -323,10 +331,6 @@ namespace lambda {
     return computational_priority_flag == ComputationalPriority::Eager;
   }
 
-  bool Abstraction::is_lazy() {
-    return computational_priority_flag == ComputationalPriority::Lazy;
-  }
-
   void Abstraction::update_free_variables() {
     if (is_free_variables_updated) { return; }
 
@@ -342,9 +346,7 @@ namespace lambda {
     Expression* first,
     Expression* second,
     ComputationalPriority computational_priority
-  ): first(first), second(second) {
-    computational_priority_flag = computational_priority;
-  }
+  ): Expression(computational_priority), first(first), second(second) {}
 
   void Application::delete_instance() {
     first->delete_instance();
@@ -388,6 +390,10 @@ namespace lambda {
     std::map<std::string, Expression*>& symbol_table,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
+    if (is_normal_form) { 
+      return { this, ReduceType::Null }; 
+    }
+
     computational_priority_flag = remove_lazy(computational_priority_flag);
 
     if (first->is_eager(bound_variables)) {
@@ -421,6 +427,7 @@ namespace lambda {
       if (pair.first) return { this, pair.second };
     }
 
+    is_normal_form = true;
     return { this, ReduceType::Null };
   }
 
@@ -442,6 +449,10 @@ namespace lambda {
       expression,
       bound_variables
     );
+
+    if ((bool)first_reduce_type || (bool) second_reduce_type) {
+      is_normal_form = false;
+    }
 
     return {
       this,
@@ -505,10 +516,6 @@ namespace lambda {
       || first->is_eager(bound_variables)
       || second->is_eager(bound_variables)
     ;
-  }
-
-  bool Application::is_lazy() {
-    return computational_priority_flag == ComputationalPriority::Lazy;
   }
 
   void Application::update_free_variables() {
