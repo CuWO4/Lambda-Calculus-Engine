@@ -49,7 +49,9 @@ namespace lambda {
 
 
   Expression::Expression(ComputationalPriority computational_priority)
-    : computational_priority_flag(computational_priority), is_normal_form(false) {}
+    : computational_priority_flag(computational_priority),
+      is_eager_flag(false), 
+      is_normal_form(false) {}
 
   auto Expression::get_free_variables() -> std::set<std::string>& {
     update_free_variables();
@@ -64,6 +66,75 @@ namespace lambda {
 
   bool Expression::is_lazy() {
     return computational_priority_flag == ComputationalPriority::Lazy;
+  }
+
+  bool Expression::is_eager() {
+    return is_eager_flag;
+  }
+
+
+  Root::Root(Expression* expression)
+    : Expression(ComputationalPriority::Neutral),
+      expression(expression) {}
+
+  void Root::delete_instance() {
+    expression->delete_instance();
+    delete this;
+  }
+
+  auto Root::reduce(
+    std::map<std::string, Expression*>& symbol_table,
+    std::multiset<std::string>& bound_variables
+  ) -> std::pair<Expression*, ReduceType> {
+    std::multiset<std::string> bound_vars{};
+    update_eager_flag(bound_vars);
+
+    auto [new_expr, reduce_type] = expression->reduce(symbol_table, bound_variables);
+    expression = new_expr;
+    return { this, reduce_type };
+  }
+
+  auto Root::replace(
+    Variable& variable,
+    Expression& expression,
+    std::multiset<std::string>& bound_variables
+  ) -> std::pair<Expression*, ReduceType> {
+    return { this, ReduceType::Null };
+  }
+
+  auto Root::apply(
+    Expression& expression,
+    std::multiset<std::string>& bound_variables
+  ) -> std::pair<Expression*, ReduceType> {
+    return { this, ReduceType::Null };
+  }
+
+  auto Root::to_string() -> std::string {
+    return expression->to_string();
+  }
+
+  auto Root::get_priority() -> Priority {
+    return Priority::Abstraction;
+  }
+
+  auto Root::clone() -> Expression* {
+    return this->clone(computational_priority_flag);
+  }
+
+  auto Root::clone(
+    ComputationalPriority new_computational_priority
+  ) -> Expression* {
+    return new Root(expression->clone(new_computational_priority));
+  }
+
+  void Root::update_eager_flag(
+    std::multiset<std::string>& bound_variables
+  ) {
+    expression->update_eager_flag(bound_variables);
+  }
+
+  void Root::update_free_variables() {
+    free_variables = {};
   }
 
 
@@ -157,10 +228,10 @@ namespace lambda {
     );
   }
   
-  bool Variable::is_eager(
+  void Variable::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
-    return 
+    is_eager_flag = 
       computational_priority_flag == ComputationalPriority::Eager
       && !has(bound_variables, literal) 
       && !is_number(literal)
@@ -321,14 +392,26 @@ namespace lambda {
     );
   }
 
-  bool Abstraction::is_eager(
+  void Abstraction::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
-    if (is_lazy()) return false;
-    for(auto free_variable: free_variables) {
-      if (has(bound_variables, free_variable)) { return false; }
+    bound_variables.emplace(binder.get_literal());
+    body->update_eager_flag(bound_variables);
+    bound_variables.erase(bound_variables.find(binder.get_literal()));
+
+    if (is_lazy()) {
+      is_eager_flag = false;
+      return;
     }
-    return computational_priority_flag == ComputationalPriority::Eager;
+
+    for(auto free_variable: free_variables) {
+      if (has(bound_variables, free_variable)) { 
+        is_eager_flag = false;
+        return; 
+      }
+    }
+
+    is_eager_flag = computational_priority_flag == ComputationalPriority::Eager;
   }
 
   void Abstraction::update_free_variables() {
@@ -396,11 +479,11 @@ namespace lambda {
 
     computational_priority_flag = remove_lazy(computational_priority_flag);
 
-    if (first->is_eager(bound_variables)) {
+    if (first->is_eager()) {
       auto pair = reduce_first(symbol_table, bound_variables);
       if (pair.first) return { this, pair.second };
     }
-    if (second->is_eager(bound_variables)) {
+    if (second->is_eager()) {
       auto pair = reduce_second(symbol_table, bound_variables);
       if (pair.first) return { this, pair.second };
     }
@@ -508,13 +591,17 @@ namespace lambda {
     );
   }
 
-  bool Application::is_eager(
+  void Application::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
-    if (is_lazy()) return false;
-    return computational_priority_flag == ComputationalPriority::Eager
-      || first->is_eager(bound_variables)
-      || second->is_eager(bound_variables)
+    first->update_eager_flag(bound_variables);
+    second->update_eager_flag(bound_variables);
+
+    is_eager_flag = !is_lazy()
+      && (
+        computational_priority_flag == ComputationalPriority::Eager
+        || first->is_eager() || second->is_eager()
+      )
     ;
   }
 

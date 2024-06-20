@@ -67,16 +67,22 @@ namespace lambda {
 
     auto get_free_variables() -> std::set<std::string>&;
 
-    virtual bool is_eager(
+    // must call `update_eager_flag()` before `is_eager()` is called
+    bool is_eager();
+    virtual void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) = 0;
+
     bool is_lazy();
+
     void set_computational_priority(
       ComputationalPriority computational_priority
     );
 
   protected:
     ComputationalPriority computational_priority_flag;
+
+    bool is_eager_flag;
 
     bool is_free_variables_updated;
     std::set<std::string> free_variables;
@@ -85,6 +91,55 @@ namespace lambda {
     bool is_normal_form;
 
     virtual ~Expression() = default;
+  };
+
+  // root of AST, behavior trying to reduce a tree without Root is unexpected
+  class Root: public Expression {
+  public:
+    Root(Expression* expression);
+    ~Root() = default;
+
+    void delete_instance() override;
+
+    Root(Root& other) = default;
+    Root(Root&& other) = default;
+    Root& operator=(Root& other) = default;
+    Root& operator=(Root&& other) = default;
+
+    auto reduce(
+      std::map<std::string, Expression*>& symbol_table,
+      std::multiset<std::string>& bound_variables
+    ) -> std::pair<Expression*, ReduceType> override;
+
+    auto replace(
+      Variable& variable,
+      Expression& expression,
+      std::multiset<std::string>& bound_variables
+    ) -> std::pair<Expression*, ReduceType> override;
+
+    auto apply(
+      Expression& expression,
+      std::multiset<std::string>& bound_variables
+    ) -> std::pair<Expression*, ReduceType> override;
+
+    auto to_string() -> std::string override;
+
+    auto get_priority() -> Priority override;
+
+    auto clone() -> Expression* override;
+    auto clone(
+      ComputationalPriority new_computational_priority
+    ) -> Expression* override;
+
+    void update_eager_flag(
+      std::multiset<std::string>& bound_variables
+    ) override;
+
+  protected:
+    void update_free_variables() override;
+
+  private:
+    Expression* expression;
   };
 
   class Variable: public Expression {
@@ -132,7 +187,7 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
-    bool is_eager(
+    void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) override;
 
@@ -186,7 +241,7 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
-    bool is_eager(
+    void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) override;
 
@@ -240,7 +295,7 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
-    bool is_eager(
+    void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) override;
 

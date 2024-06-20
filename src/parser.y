@@ -52,7 +52,8 @@ definition
 
 solution
   : '@' expression { 
-    reducer.reduce($2, out, display_process); 
+    auto expression = new lambda::Root($2);
+    reducer.reduce(expression, out, display_process); 
   }
 ;
 
