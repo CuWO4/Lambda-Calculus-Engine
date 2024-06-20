@@ -8,9 +8,9 @@ import "logic.lambda"
 # *n := \m.\n. m {+n n} 0
 # ^n := \b.\e. e {b}
 
-# is0n? := \n. n (\x. $F) $T
-# <=n := \m.\n. is0n? (-n m n)
-# >=n := \m.\n. is0n? (-n n m)
+# 0n? := \n. n (\x. $F) $T
+# <=n := \m.\n. 0n? (-n m n)
+# >=n := \m.\n. 0n? (-n n m)
 # =n := \m.\n. 
   (\m.\n.
     & (<=n m n) (>=n m n)
@@ -27,7 +27,7 @@ import "logic.lambda"
   ) {m} {n}
 
 # div? := \m.\n.
-  is0n? (%n n m)
+  0n? (%n n m)
 
 # prime? := \n.
   (\n.
@@ -50,7 +50,7 @@ import "logic.lambda"
     {>=n m n}
       $(gcd n m)
       $(
-        {is0n? m}
+        {0n? m}
         $n
         $(gcd (%n n m) m)
       )

@@ -5,7 +5,7 @@ import "pair.lambda"
 # newz := \a.\b.[] {a} {b}
 # reducez := \i. 
   (\a.\b.
-    {| (is0n? a) (is0n? b)}
+    {| (0n? a) (0n? b)}
       i 
       ({>=n a b} (newz (-n a b) 0) (newz 0 (-n b a)))
   ) {[ i} {] i}
