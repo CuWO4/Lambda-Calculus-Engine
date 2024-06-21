@@ -14,7 +14,6 @@ namespace lambda {
     Neutral = 0,
     Eager = 1
   };
-  ComputationalPriority remove_lazy(ComputationalPriority);
 
   enum class ReduceType {
     Null = 0,

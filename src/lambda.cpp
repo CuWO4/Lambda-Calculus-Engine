@@ -40,14 +40,6 @@ namespace lambda {
   }
 
 
-  ComputationalPriority remove_lazy(ComputationalPriority computational_priority) {
-    return computational_priority == ComputationalPriority::Lazy
-      ? ComputationalPriority::Neutral
-      : computational_priority
-    ;
-  }
-
-
   Expression::Expression(ComputationalPriority computational_priority)
     : computational_priority_flag(computational_priority),
       is_is_eager_flag_updated(false),
@@ -62,6 +54,9 @@ namespace lambda {
   void Expression::set_computational_priority(
     ComputationalPriority computational_priority
   ) {
+    if (computational_priority != computational_priority_flag) {
+      is_is_eager_flag_updated = false;
+    }
     computational_priority_flag = computational_priority;
   }
 
@@ -91,8 +86,7 @@ namespace lambda {
     update_eager_flag(bound_vars);
 
     auto [new_expr, reduce_type] = expression->reduce(symbol_table, bound_variables);
-    expression = new_expr;
-    return { this, reduce_type };
+    return { new Root(new_expr), reduce_type };
   }
 
   auto Root::replace(
@@ -125,12 +119,14 @@ namespace lambda {
   auto Root::clone(
     ComputationalPriority new_computational_priority
   ) -> Expression* {
-    auto result = new Root(expression->clone(new_computational_priority));
+    auto result = new Root(expression->clone());
 
-    if (is_free_variables_updated) {
-      result->is_free_variables_updated = true;
-      result->free_variables = free_variables;
-    }
+    result->is_normal_form = is_normal_form;
+    
+    result->is_is_eager_flag_updated = is_is_eager_flag_updated;
+    result->is_eager_flag = is_eager_flag;
+
+    result->set_computational_priority(new_computational_priority);
 
     return result;
   }
@@ -138,8 +134,8 @@ namespace lambda {
   void Root::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
-    // if (is_is_eager_flag_updated) { return; }
-    // is_is_eager_flag_updated = true;
+    if (is_is_eager_flag_updated) { return; }
+    is_is_eager_flag_updated = true;
 
     expression->update_eager_flag(bound_variables);
   }
@@ -175,7 +171,9 @@ namespace lambda {
       return { this, ReduceType::Null }; 
     }
 
-    computational_priority_flag = remove_lazy(computational_priority_flag);
+    if (computational_priority_flag == ComputationalPriority::Lazy) {
+      set_computational_priority(ComputationalPriority::Neutral);
+    }
 
     if (is_number(literal)) {
       auto new_expr = generate_church_number(atoi(literal.c_str()));
@@ -191,7 +189,8 @@ namespace lambda {
       return { new_expr, ReduceType::Delta };
     }
 
-    computational_priority_flag = ComputationalPriority::Neutral;
+    set_computational_priority(ComputationalPriority::Neutral);
+
     is_normal_form = true;
     return { this, ReduceType::Null };
   }
@@ -231,20 +230,27 @@ namespace lambda {
   auto Variable::clone(
     ComputationalPriority new_computational_priority
   ) -> Expression* {
-    return new Variable(
-      literal,
-      new_computational_priority
-    );
+    auto result = new Variable(literal);
+
+    result->is_normal_form = is_normal_form;
+
+    result->is_is_eager_flag_updated = is_is_eager_flag_updated;
+    result->is_eager_flag = is_eager_flag;
+
+    result->set_computational_priority(new_computational_priority);
+
+    return result;
   }
   
   void Variable::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
-    // if (is_is_eager_flag_updated) { return; }
-    // is_is_eager_flag_updated = true;
+    if (is_is_eager_flag_updated) { return; }
+    is_is_eager_flag_updated = true;
 
     is_eager_flag = 
-      computational_priority_flag == ComputationalPriority::Eager
+      !is_lazy()
+      && computational_priority_flag == ComputationalPriority::Eager
       && !has(bound_variables, literal) 
       && !is_number(literal)
     ;
@@ -292,7 +298,9 @@ namespace lambda {
       return { this, ReduceType::Null }; 
     }
 
-    computational_priority_flag = remove_lazy(computational_priority_flag);
+    if (computational_priority_flag == ComputationalPriority::Lazy) {
+      set_computational_priority(ComputationalPriority::Neutral);
+    }
 
     bound_variables.emplace(binder.get_literal());
     auto [new_body, reduce_type] = body->reduce(
@@ -303,14 +311,14 @@ namespace lambda {
     bound_variables.erase(bound_variables.find(binder.get_literal()));
 
     if (reduce_type == ReduceType::Null) {
-      computational_priority_flag = ComputationalPriority::Neutral;
+      set_computational_priority(ComputationalPriority::Neutral);
       is_normal_form = true;
-      return { this, ReduceType::Null }; 
     }
     else {
       is_free_variables_updated = false;
-      return { this, reduce_type };
+      is_is_eager_flag_updated = false;
     }
+    return { this, reduce_type }; 
   }
 
   auto Abstraction::replace(
@@ -393,16 +401,14 @@ namespace lambda {
   auto Abstraction::clone(
     ComputationalPriority new_computational_priority
   ) -> Expression* {
-    auto result = new Abstraction(
-      binder,
-      body->clone(),
-      new_computational_priority
-    );
+    auto result = new Abstraction(binder, body->clone());
 
-    if (is_free_variables_updated) {
-      result->is_free_variables_updated = true;
-      result->free_variables = free_variables;
-    }
+    result->is_normal_form = is_normal_form;
+
+    result->is_is_eager_flag_updated = is_is_eager_flag_updated;
+    result->is_eager_flag = is_eager_flag;
+
+    result->set_computational_priority(new_computational_priority);
 
     return result;
   }
@@ -410,8 +416,8 @@ namespace lambda {
   void Abstraction::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
-    // if (is_is_eager_flag_updated) { return; }
-    // is_is_eager_flag_updated = true;
+    if (is_is_eager_flag_updated) { return; }
+    is_is_eager_flag_updated = true;
 
     bound_variables.emplace(binder.get_literal());
     body->update_eager_flag(bound_variables);
@@ -459,14 +465,16 @@ namespace lambda {
     std::map<std::string, Expression*>& symbol_table,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<bool, ReduceType> {
-    auto pair = first->reduce(symbol_table, bound_variables);
-    first = pair.first;
-    auto reduce_type = pair.second;
+    ReduceType reduce_type;
+    std::tie(first, reduce_type) = first->reduce(symbol_table, bound_variables);
 
-    computational_priority_flag = (bool)reduce_type 
-      ? computational_priority_flag
-      : ComputationalPriority::Neutral;
-    is_free_variables_updated = false;
+    if ((bool)reduce_type) {
+      is_free_variables_updated = false;
+      is_is_eager_flag_updated = false;
+    }
+    else {
+      set_computational_priority(ComputationalPriority::Neutral);
+    }
 
     return { (bool)reduce_type, reduce_type };
   }
@@ -475,14 +483,16 @@ namespace lambda {
     std::map<std::string, Expression*>& symbol_table,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<bool, ReduceType> {
-    auto pair = second->reduce(symbol_table, bound_variables);
-    second = pair.first;
-    auto reduce_type = pair.second;
+    ReduceType reduce_type;
+    std::tie(second, reduce_type) = second->reduce(symbol_table, bound_variables);
 
-    computational_priority_flag = (bool)reduce_type 
-      ? computational_priority_flag
-      : ComputationalPriority::Neutral;
-    is_free_variables_updated = false;
+    if ((bool)reduce_type) {
+      is_free_variables_updated = false;
+      is_is_eager_flag_updated = false;
+    }
+    else {
+      set_computational_priority(ComputationalPriority::Neutral);
+    }
 
     return { (bool)reduce_type, reduce_type };
   }
@@ -495,15 +505,17 @@ namespace lambda {
       return { this, ReduceType::Null }; 
     }
 
-    computational_priority_flag = remove_lazy(computational_priority_flag);
+    if (computational_priority_flag == ComputationalPriority::Lazy) {
+      set_computational_priority(ComputationalPriority::Neutral);
+    }
 
     if (first->is_eager()) {
-      auto pair = reduce_first(symbol_table, bound_variables);
-      if (pair.first) return { this, pair.second };
+      auto [reduced, reduce_type] = reduce_first(symbol_table, bound_variables);
+      if (reduced) return { this, reduce_type };
     }
     if (second->is_eager()) {
-      auto pair = reduce_second(symbol_table, bound_variables);
-      if (pair.first) return { this, pair.second };
+      auto [reduced, reduce_type] = reduce_second(symbol_table, bound_variables);
+      if (reduced) return { this, reduce_type };
     }
 
     auto [new_expr, reduce_type] = first->apply(*second, bound_variables);
@@ -514,18 +526,18 @@ namespace lambda {
     }
 
     if (first->is_lazy()) {
-      auto pair = reduce_second(symbol_table, bound_variables);
-      if (pair.first) return { this, pair.second };
+      auto [reduced, reduce_type] = reduce_second(symbol_table, bound_variables);
+      if (reduced) return { this, reduce_type };
 
-      pair = reduce_first(symbol_table, bound_variables);
-      if (pair.first) return { this, pair.second };
+      std::tie(reduced, reduce_type) = reduce_first(symbol_table, bound_variables);
+      if (reduced) return { this, reduce_type };
     }
     else {
-      auto pair = reduce_first(symbol_table, bound_variables);
-      if (pair.first) return { this, pair.second };
+      auto [reduced, reduce_type] = reduce_first(symbol_table, bound_variables);
+      if (reduced) return { this, reduce_type };
 
-      pair = reduce_second(symbol_table, bound_variables);
-      if (pair.first) return { this, pair.second };
+      std::tie(reduced, reduce_type) = reduce_second(symbol_table, bound_variables);
+      if (reduced) return { this, reduce_type };
     }
 
     is_normal_form = true;
@@ -553,6 +565,7 @@ namespace lambda {
 
     if ((bool)first_reduce_type || (bool) second_reduce_type) {
       is_normal_form = false;
+      is_is_eager_flag_updated = false;
     }
 
     return {
@@ -598,16 +611,14 @@ namespace lambda {
   auto Application::clone(
     ComputationalPriority new_computational_priority
   ) -> Expression* {
-    auto result = new Application(
-      first->clone(),
-      second->clone(),
-      new_computational_priority
-    );
+    auto result = new Application(first->clone(), second->clone());
 
-    if (is_free_variables_updated) {
-      result->is_free_variables_updated = true;
-      result->free_variables = free_variables;
-    }
+    result->is_normal_form = is_normal_form;
+    
+    result->is_is_eager_flag_updated = is_is_eager_flag_updated;
+    result->is_eager_flag = is_eager_flag;
+
+    result->set_computational_priority(new_computational_priority);
 
     return result;
   }
@@ -615,8 +626,8 @@ namespace lambda {
   void Application::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
-    // if (is_is_eager_flag_updated) { return; }
-    // is_is_eager_flag_updated = true;
+    if (is_is_eager_flag_updated) { return; }
+    is_is_eager_flag_updated = true;
 
     first->update_eager_flag(bound_variables);
     second->update_eager_flag(bound_variables);
@@ -695,9 +706,8 @@ namespace lambda {
     auto msec = msec_count([&]() {
       for (step = 0;; step++) {
         std::multiset<std::string> bound_variables;
-        auto pair = expr->reduce(symbol_table, bound_variables);
-        expr = pair.first;
-        auto reduce_type = pair.second;
+        ReduceType reduce_type;
+        std::tie(expr, reduce_type) = expr->reduce(symbol_table, bound_variables);
 
         if (reduce_type == ReduceType::Null) { break; }
 
