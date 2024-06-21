@@ -84,6 +84,7 @@ namespace lambda {
   ) -> std::pair<Expression*, ReduceType> {
     std::multiset<std::string> bound_vars{};
     update_eager_flag(bound_vars);
+    update_free_variables();
 
     auto [new_expr, reduce_type] = expression->reduce(symbol_table, bound_variables);
     return { new Root(new_expr), reduce_type };
@@ -141,7 +142,7 @@ namespace lambda {
   }
 
   void Root::update_free_variables() {
-    free_variables = {};
+    free_variables = expression->get_free_variables();
   }
 
 
@@ -257,11 +258,8 @@ namespace lambda {
   }
 
   void Variable::update_free_variables() {
-    if (is_free_variables_updated) { return; }
-
+    if (free_variables.size() > 0) { return; }
     free_variables = { literal };
-      
-    is_free_variables_updated = true;
   }
 
 
@@ -335,7 +333,7 @@ namespace lambda {
         std::string new_literal = index_to_string(i);
         if (
           !has(bound_variables, new_literal) 
-          && !has(free_variables, new_literal)
+          && !has(get_free_variables(), new_literal)
           && new_literal != binder.get_literal()
         ) {
           return this->alpha_reduce(
@@ -428,7 +426,7 @@ namespace lambda {
       return;
     }
 
-    for(auto free_variable: free_variables) {
+    for(auto free_variable: get_free_variables()) {
       if (has(bound_variables, free_variable)) { 
         is_eager_flag = false;
         return; 
@@ -440,11 +438,10 @@ namespace lambda {
 
   void Abstraction::update_free_variables() {
     if (is_free_variables_updated) { return; }
+    is_free_variables_updated = true;
 
     free_variables = this->body->get_free_variables();
     free_variables.erase(this->binder.get_literal());
-      
-    is_free_variables_updated = true;
   }
 
 
@@ -642,11 +639,10 @@ namespace lambda {
 
   void Application::update_free_variables() {
     if (is_free_variables_updated) { return; }
+    is_free_variables_updated = true;
 
     free_variables = this->first->get_free_variables()
       + this->second->get_free_variables();
-
-    is_free_variables_updated = true;
   }
 
 
