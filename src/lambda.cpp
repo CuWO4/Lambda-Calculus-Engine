@@ -50,6 +50,7 @@ namespace lambda {
 
   Expression::Expression(ComputationalPriority computational_priority)
     : computational_priority_flag(computational_priority),
+      is_is_eager_flag_updated(false),
       is_eager_flag(false), 
       is_normal_form(false) {}
 
@@ -124,12 +125,22 @@ namespace lambda {
   auto Root::clone(
     ComputationalPriority new_computational_priority
   ) -> Expression* {
-    return new Root(expression->clone(new_computational_priority));
+    auto result = new Root(expression->clone(new_computational_priority));
+
+    if (is_free_variables_updated) {
+      result->is_free_variables_updated = true;
+      result->free_variables = free_variables;
+    }
+
+    return result;
   }
 
   void Root::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
+    // if (is_is_eager_flag_updated) { return; }
+    // is_is_eager_flag_updated = true;
+
     expression->update_eager_flag(bound_variables);
   }
 
@@ -174,7 +185,8 @@ namespace lambda {
     }
 
     if (!has(bound_variables, literal) && has(symbol_table, literal)) {
-      auto new_expr = symbol_table.find(literal)->second->clone(computational_priority_flag);
+      auto new_expr = symbol_table.find(literal)->second
+        ->clone(computational_priority_flag);
       delete this;
       return { new_expr, ReduceType::Delta };
     }
@@ -214,10 +226,7 @@ namespace lambda {
   }
 
   auto Variable::clone() -> Expression* {
-    return new Variable(
-      literal,
-      computational_priority_flag
-    );
+    return this->clone(computational_priority_flag);
   }
   auto Variable::clone(
     ComputationalPriority new_computational_priority
@@ -231,6 +240,9 @@ namespace lambda {
   void Variable::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
+    // if (is_is_eager_flag_updated) { return; }
+    // is_is_eager_flag_updated = true;
+
     is_eager_flag = 
       computational_priority_flag == ComputationalPriority::Eager
       && !has(bound_variables, literal) 
@@ -287,6 +299,7 @@ namespace lambda {
       symbol_table,
       bound_variables
     );
+    body = new_body;
     bound_variables.erase(bound_variables.find(binder.get_literal()));
 
     if (reduce_type == ReduceType::Null) {
@@ -295,7 +308,6 @@ namespace lambda {
       return { this, ReduceType::Null }; 
     }
     else {
-      body = new_body;
       is_free_variables_updated = false;
       return { this, reduce_type };
     }
@@ -376,25 +388,31 @@ namespace lambda {
   }
 
   auto Abstraction::clone() -> Expression* {
-    return new Abstraction(
-      binder,
-      body->clone(),
-      computational_priority_flag
-    );
+    return this->clone(computational_priority_flag);
   }
   auto Abstraction::clone(
     ComputationalPriority new_computational_priority
   ) -> Expression* {
-    return new Abstraction(
+    auto result = new Abstraction(
       binder,
       body->clone(),
       new_computational_priority
     );
+
+    if (is_free_variables_updated) {
+      result->is_free_variables_updated = true;
+      result->free_variables = free_variables;
+    }
+
+    return result;
   }
 
   void Abstraction::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
+    // if (is_is_eager_flag_updated) { return; }
+    // is_is_eager_flag_updated = true;
+
     bound_variables.emplace(binder.get_literal());
     body->update_eager_flag(bound_variables);
     bound_variables.erase(bound_variables.find(binder.get_literal()));
@@ -575,25 +593,31 @@ namespace lambda {
   }
 
   auto Application::clone() -> Expression* {
-    return new Application(
-      first->clone(),
-      second->clone(),
-      computational_priority_flag
-    );
+    return this->clone(computational_priority_flag);
   }
   auto Application::clone(
     ComputationalPriority new_computational_priority
   ) -> Expression* {
-    return new Application(
+    auto result = new Application(
       first->clone(),
       second->clone(),
       new_computational_priority
     );
+
+    if (is_free_variables_updated) {
+      result->is_free_variables_updated = true;
+      result->free_variables = free_variables;
+    }
+
+    return result;
   }
 
   void Application::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
+    // if (is_is_eager_flag_updated) { return; }
+    // is_is_eager_flag_updated = true;
+
     first->update_eager_flag(bound_variables);
     second->update_eager_flag(bound_variables);
 

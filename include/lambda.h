@@ -82,6 +82,7 @@ namespace lambda {
   protected:
     ComputationalPriority computational_priority_flag;
 
+    bool is_is_eager_flag_updated;
     bool is_eager_flag;
 
     bool is_free_variables_updated;
