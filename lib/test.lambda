@@ -2,3 +2,5 @@ import "nature.lambda"
 import "control.lambda"
 
 @ fold (filter (make_list 0 (>=n 20) ++n) prime?) 0 +n
+
+@ ^n 10 4
