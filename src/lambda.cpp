@@ -299,21 +299,21 @@ namespace lambda {
       set_computational_priority(ComputationalPriority::Neutral);
     }
 
+    ReduceType reduce_type;
     auto it = bound_variables.emplace(binder.get_literal());
-    auto [new_body, reduce_type] = body->reduce(
+    std::tie(body, reduce_type) = body->reduce(
       symbol_table,
       bound_variables
     );
-    body = new_body;
     bound_variables.erase(it);
 
-    if (reduce_type == ReduceType::Null) {
-      set_computational_priority(ComputationalPriority::Neutral);
-      is_normal_form = true;
+    if ((bool)reduce_type) {
+      auto new_expr = new Abstraction(binder, body, computational_priority_flag);
+      delete this;
+      return { new_expr, reduce_type };
     }
-    else {
-      is_is_eager_flag_updated = false;
-    }
+
+    is_normal_form = true;
     return { this, reduce_type }; 
   }
 
@@ -345,21 +345,16 @@ namespace lambda {
       }
     }
 
+    ReduceType reduce_type;
     auto it = bound_variables.emplace(binder.get_literal());
-    auto [new_body, reduce_type] = body->replace(
+    std::tie(body, reduce_type) = body->replace(
       variable,
       expression,
       bound_variables
     );
     bound_variables.erase(it);
 
-    auto new_expr = new Abstraction(
-      binder,
-      new_body,
-      computational_priority_flag
-    );
-    delete this;
-    return { new_expr, reduce_type };
+    return { this, reduce_type };
   }
 
   auto Abstraction::apply(
