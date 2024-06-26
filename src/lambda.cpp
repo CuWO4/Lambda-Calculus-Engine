@@ -59,7 +59,10 @@ namespace lambda {
     return computational_priority_flag == ComputationalPriority::Lazy;
   }
 
-  bool Expression::is_eager() {
+  bool Expression::is_eager(
+    std::multiset<std::string>& bound_variables
+  ) {
+    update_eager_flag(bound_variables);
     return is_eager_flag;
   }
 
@@ -81,9 +84,6 @@ namespace lambda {
     std::map<std::string, Expression*>& symbol_table,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
-    std::multiset<std::string> bound_vars{};
-    update_eager_flag(bound_vars);
-
     auto [new_expr, reduce_type] = expression->reduce(symbol_table, bound_variables);
     return { new Root(new_expr), reduce_type };
   }
@@ -140,8 +140,6 @@ namespace lambda {
   ) {
     if (is_is_eager_flag_updated) { return; }
     is_is_eager_flag_updated = true;
-
-    expression->update_eager_flag(bound_variables);
   }
 
   Variable::Variable(
@@ -422,10 +420,6 @@ namespace lambda {
     if (is_is_eager_flag_updated) { return; }
     is_is_eager_flag_updated = true;
 
-    auto it = bound_variables.emplace(binder.get_literal());
-    body->update_eager_flag(bound_variables);
-    bound_variables.erase(it);
-
     is_eager_flag = computational_priority_flag == ComputationalPriority::Eager;
   }
 
@@ -487,11 +481,11 @@ namespace lambda {
       set_computational_priority(ComputationalPriority::Neutral);
     }
 
-    if (first->is_eager()) {
+    if (first->is_eager(bound_variables)) {
       auto [reduced, reduce_type] = reduce_first(symbol_table, bound_variables);
       if (reduced) return { this, reduce_type };
     }
-    if (second->is_eager()) {
+    if (second->is_eager(bound_variables)) {
       auto [reduced, reduce_type] = reduce_second(symbol_table, bound_variables);
       if (reduced) return { this, reduce_type };
     }
@@ -612,13 +606,11 @@ namespace lambda {
     if (is_is_eager_flag_updated) { return; }
     is_is_eager_flag_updated = true;
 
-    first->update_eager_flag(bound_variables);
-    second->update_eager_flag(bound_variables);
-
     is_eager_flag = !is_lazy()
       && (
         computational_priority_flag == ComputationalPriority::Eager
-        || first->is_eager() || second->is_eager()
+        || first->is_eager(bound_variables) 
+        || second->is_eager(bound_variables)
       )
     ;
   }

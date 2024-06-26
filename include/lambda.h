@@ -67,8 +67,9 @@ namespace lambda {
     virtual bool is_variable_free(const std::string& literal) = 0;
     bool is_variable_free(std::string&& literal);
 
-    // must call `update_eager_flag()` before `is_eager()` is called
-    bool is_eager();
+    bool is_eager(
+      std::multiset<std::string>& bound_variables
+    );
     virtual void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) = 0;
