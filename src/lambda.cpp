@@ -255,7 +255,8 @@ namespace lambda {
     is_is_eager_flag_updated = true;
 
     is_eager_flag = 
-      !is_lazy()
+      !is_normal_form
+      && !is_lazy()
       && computational_priority_flag == ComputationalPriority::Eager
       && !has(bound_variables, literal) 
       && !is_number(literal)
@@ -415,7 +416,9 @@ namespace lambda {
     if (is_is_eager_flag_updated) { return; }
     is_is_eager_flag_updated = true;
 
-    is_eager_flag = computational_priority_flag == ComputationalPriority::Eager;
+    is_eager_flag = 
+      !is_normal_form
+      && computational_priority_flag == ComputationalPriority::Eager;
   }
 
   Application::Application(
@@ -601,7 +604,9 @@ namespace lambda {
     if (is_is_eager_flag_updated) { return; }
     is_is_eager_flag_updated = true;
 
-    is_eager_flag = !is_lazy()
+    is_eager_flag = 
+      !is_normal_form
+      && !is_lazy()
       && (
         computational_priority_flag == ComputationalPriority::Eager
         || first->is_eager(bound_variables) 
