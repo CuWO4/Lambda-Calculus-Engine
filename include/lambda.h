@@ -64,7 +64,8 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* = 0;
 
-    auto get_free_variables() -> std::set<std::string>&;
+    virtual bool is_variable_free(const std::string& literal) = 0;
+    bool is_variable_free(std::string&& literal);
 
     // must call `update_eager_flag()` before `is_eager()` is called
     bool is_eager();
@@ -83,10 +84,6 @@ namespace lambda {
 
     bool is_is_eager_flag_updated;
     bool is_eager_flag;
-
-    bool is_free_variables_updated;
-    std::set<std::string> free_variables;
-    virtual void update_free_variables() = 0;
 
     bool is_normal_form;
 
@@ -131,12 +128,11 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
+    bool is_variable_free(const std::string& literal) override;
+
     void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) override;
-
-  protected:
-    void update_free_variables() override;
 
   private:
     Expression* expression;
@@ -160,7 +156,7 @@ namespace lambda {
     bool operator==(Variable& right);
     bool operator==(Variable&& right);
 
-    auto get_literal() -> std::string&;
+    auto get_literal() -> const std::string&;
 
     auto reduce(
       std::map<std::string, Expression*>& symbol_table,
@@ -187,12 +183,11 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
+    bool is_variable_free(const std::string& literal) override;
+
     void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) override;
-
-  protected:
-    void update_free_variables() override;
 
   private:
     std::string literal;
@@ -241,12 +236,11 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
+    bool is_variable_free(const std::string& literal) override;
+
     void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) override;
-
-  protected:
-    void update_free_variables() override;
 
   private:
     Variable binder;
@@ -295,12 +289,11 @@ namespace lambda {
       ComputationalPriority new_computational_priority
     ) -> Expression* override;
 
+    bool is_variable_free(const std::string& literal) override;
+
     void update_eager_flag(
       std::multiset<std::string>& bound_variables
     ) override;
-
-  protected:
-    void update_free_variables() override;
 
   private:
     Expression* first;
