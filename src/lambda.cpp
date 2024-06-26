@@ -46,11 +46,6 @@ namespace lambda {
       is_eager_flag(false), 
       is_normal_form(false) {}
 
-  auto Expression::get_free_variables() -> std::set<std::string>& {
-    update_free_variables();
-    return free_variables;
-  }
-
   void Expression::set_computational_priority(
     ComputationalPriority computational_priority
   ) {
@@ -66,6 +61,10 @@ namespace lambda {
 
   bool Expression::is_eager() {
     return is_eager_flag;
+  }
+
+  bool Expression::is_variable_free(std::string&& literal) {
+    return is_variable_free(literal);
   }
 
 
@@ -84,7 +83,6 @@ namespace lambda {
   ) -> std::pair<Expression*, ReduceType> {
     std::multiset<std::string> bound_vars{};
     update_eager_flag(bound_vars);
-    update_free_variables();
 
     auto [new_expr, reduce_type] = expression->reduce(symbol_table, bound_variables);
     return { new Root(new_expr), reduce_type };
@@ -132,6 +130,11 @@ namespace lambda {
     return result;
   }
 
+  bool Root::is_variable_free(const std::string& literal) {
+    return expression->is_variable_free(literal);
+  }
+
+
   void Root::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
@@ -140,11 +143,6 @@ namespace lambda {
 
     expression->update_eager_flag(bound_variables);
   }
-
-  void Root::update_free_variables() {
-    free_variables = expression->get_free_variables();
-  }
-
 
   Variable::Variable(
     std::string literal, 
@@ -162,7 +160,7 @@ namespace lambda {
     return literal == right.literal;
   }
 
-  auto Variable::get_literal() -> std::string& { return literal; }
+  auto Variable::get_literal() -> const std::string& { return literal; }
 
   auto Variable::reduce(
     std::map<std::string, Expression*>& symbol_table,
@@ -176,6 +174,11 @@ namespace lambda {
       set_computational_priority(ComputationalPriority::Neutral);
     }
 
+    if (has(bound_variables, literal)) {
+      is_normal_form = true;
+      return { this, ReduceType::Null };
+    }
+
     if (is_number(literal)) {
       auto new_expr = generate_church_number(atoi(literal.c_str()));
       new_expr->set_computational_priority(computational_priority_flag);
@@ -183,7 +186,7 @@ namespace lambda {
       return { new_expr, ReduceType::Delta };
     }
 
-    if (!has(bound_variables, literal) && has(symbol_table, literal)) {
+    if (has(symbol_table, literal)) {
       auto new_expr = symbol_table.find(literal)->second
         ->clone(computational_priority_flag);
       delete this;
@@ -242,6 +245,10 @@ namespace lambda {
 
     return result;
   }
+
+  bool Variable::is_variable_free(const std::string& literal) {
+    return this->literal == literal;
+  }
   
   void Variable::update_eager_flag(
     std::multiset<std::string>& bound_variables
@@ -256,12 +263,6 @@ namespace lambda {
       && !is_number(literal)
     ;
   }
-
-  void Variable::update_free_variables() {
-    if (free_variables.size() > 0) { return; }
-    free_variables = { literal };
-  }
-
 
   Abstraction::Abstraction(
     Variable binder,
@@ -300,20 +301,19 @@ namespace lambda {
       set_computational_priority(ComputationalPriority::Neutral);
     }
 
-    bound_variables.emplace(binder.get_literal());
+    auto it = bound_variables.emplace(binder.get_literal());
     auto [new_body, reduce_type] = body->reduce(
       symbol_table,
       bound_variables
     );
     body = new_body;
-    bound_variables.erase(bound_variables.find(binder.get_literal()));
+    bound_variables.erase(it);
 
     if (reduce_type == ReduceType::Null) {
       set_computational_priority(ComputationalPriority::Neutral);
       is_normal_form = true;
     }
     else {
-      is_free_variables_updated = false;
       is_is_eager_flag_updated = false;
     }
     return { this, reduce_type }; 
@@ -328,13 +328,13 @@ namespace lambda {
       return { this, ReduceType::Null };
     }
 
-    if (has(expression.get_free_variables(), binder.get_literal())) {
+    if (expression.is_variable_free(binder.get_literal())) {
       for (int i = 0;; i++) {
-        std::string new_literal = index_to_string(i);
+        std::string&& new_literal = index_to_string(i);
         if (
           !has(bound_variables, new_literal) 
-          && !has(get_free_variables(), new_literal)
           && new_literal != binder.get_literal()
+          && !expression.is_variable_free(new_literal)
         ) {
           return this->alpha_reduce(
             Variable(new_literal)
@@ -347,13 +347,13 @@ namespace lambda {
       }
     }
 
-    bound_variables.emplace(binder.get_literal());
+    auto it = bound_variables.emplace(binder.get_literal());
     auto [new_body, reduce_type] = body->replace(
       variable,
       expression,
       bound_variables
     );
-    bound_variables.erase(bound_variables.find(binder.get_literal()));
+    bound_variables.erase(it);
 
     auto new_expr = new Abstraction(
       binder,
@@ -368,14 +368,14 @@ namespace lambda {
     Expression& expression,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
-    bound_variables.emplace(binder.get_literal());
+    auto it = bound_variables.emplace(binder.get_literal());
     auto result = body->replace(
       binder,
       expression,
       bound_variables
     ).first;
     result->set_computational_priority(computational_priority_flag);
-    bound_variables.erase(bound_variables.find(binder.get_literal()));
+    bound_variables.erase(it);
 
     delete this;
     return { result, ReduceType::Beta };
@@ -411,40 +411,23 @@ namespace lambda {
     return result;
   }
 
+  bool Abstraction::is_variable_free(const std::string& literal) {
+    return binder.get_literal() != literal
+      && body->is_variable_free(literal);
+  }
+
   void Abstraction::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
     if (is_is_eager_flag_updated) { return; }
     is_is_eager_flag_updated = true;
 
-    bound_variables.emplace(binder.get_literal());
+    auto it = bound_variables.emplace(binder.get_literal());
     body->update_eager_flag(bound_variables);
-    bound_variables.erase(bound_variables.find(binder.get_literal()));
-
-    if (is_lazy()) {
-      is_eager_flag = false;
-      return;
-    }
-
-    for(auto free_variable: get_free_variables()) {
-      if (has(bound_variables, free_variable)) { 
-        is_eager_flag = false;
-        return; 
-      }
-    }
+    bound_variables.erase(it);
 
     is_eager_flag = computational_priority_flag == ComputationalPriority::Eager;
   }
-
-  void Abstraction::update_free_variables() {
-    if (is_free_variables_updated) { return; }
-    is_free_variables_updated = true;
-
-    free_variables = this->body->get_free_variables();
-    free_variables.erase(this->binder.get_literal());
-  }
-
-
 
   Application::Application(
     Expression* first,
@@ -466,7 +449,6 @@ namespace lambda {
     std::tie(first, reduce_type) = first->reduce(symbol_table, bound_variables);
 
     if ((bool)reduce_type) {
-      is_free_variables_updated = false;
       is_is_eager_flag_updated = false;
     }
     else {
@@ -484,7 +466,6 @@ namespace lambda {
     std::tie(second, reduce_type) = second->reduce(symbol_table, bound_variables);
 
     if ((bool)reduce_type) {
-      is_free_variables_updated = false;
       is_is_eager_flag_updated = false;
     }
     else {
@@ -620,6 +601,11 @@ namespace lambda {
     return result;
   }
 
+  bool Application::is_variable_free(const std::string& literal) {
+    return first->is_variable_free(literal)
+      || second->is_variable_free(literal);
+  }
+
   void Application::update_eager_flag(
     std::multiset<std::string>& bound_variables
   ) {
@@ -635,14 +621,6 @@ namespace lambda {
         || first->is_eager() || second->is_eager()
       )
     ;
-  }
-
-  void Application::update_free_variables() {
-    if (is_free_variables_updated) { return; }
-    is_free_variables_updated = true;
-
-    free_variables = this->first->get_free_variables()
-      + this->second->get_free_variables();
   }
 
 
