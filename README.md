@@ -118,13 +118,11 @@ First, a list from 1 to 10 is generated, then it is filtered to keep only the pr
 
 Corresponding output:
 ```
-...
-beta>  \f.\x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f ((\x. x) x)))))))))))))))))
-beta>  \f.\x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))
+fold (filter list prime?) 0 +n
+
 
 to be sought:     fold (filter list prime?) 0 +n
 result:           \f.\x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))
-step taken:       10563
-character count:  15009827
-time cost:        2036ms
+step taken:       7660
+time cost:        24ms
 ```
