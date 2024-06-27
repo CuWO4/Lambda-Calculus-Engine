@@ -192,7 +192,6 @@ namespace lambda {
     }
 
     set_computational_priority(ComputationalPriority::Neutral);
-
     is_normal_form = true;
     return { this, ReduceType::Null };
   }
@@ -314,6 +313,7 @@ namespace lambda {
       return { new_expr, reduce_type };
     }
 
+    set_computational_priority(ComputationalPriority::Neutral);
     is_normal_form = true;
     return { this, reduce_type }; 
   }
@@ -354,6 +354,11 @@ namespace lambda {
       bound_variables
     );
     bound_variables.erase(it);
+
+    if ((bool)reduce_type) {
+      is_normal_form = false;
+      is_is_eager_flag_updated = false;
+    }
 
     return { this, reduce_type };
   }
@@ -443,9 +448,6 @@ namespace lambda {
     if ((bool)reduce_type) {
       is_is_eager_flag_updated = false;
     }
-    else {
-      set_computational_priority(ComputationalPriority::Neutral);
-    }
 
     return { (bool)reduce_type, reduce_type };
   }
@@ -459,9 +461,6 @@ namespace lambda {
 
     if ((bool)reduce_type) {
       is_is_eager_flag_updated = false;
-    }
-    else {
-      set_computational_priority(ComputationalPriority::Neutral);
     }
 
     return { (bool)reduce_type, reduce_type };
@@ -510,6 +509,7 @@ namespace lambda {
       if (reduced) return { this, reduce_type };
     }
 
+    set_computational_priority(ComputationalPriority::Neutral);
     is_normal_form = true;
     return { this, ReduceType::Null };
   }
