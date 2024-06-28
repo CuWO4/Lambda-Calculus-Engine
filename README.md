@@ -123,6 +123,6 @@ fold (filter list prime?) 0 +n
 
 to be sought:     fold (filter list prime?) 0 +n
 result:           \f.\x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))
-step taken:       7660
-time cost:        24ms
+step taken:       6311
+time cost:        16ms
 ```
