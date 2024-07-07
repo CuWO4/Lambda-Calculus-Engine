@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <functional>
+#include <cassert>
 
 namespace lambda {
 
@@ -34,7 +35,7 @@ namespace lambda {
 
   static bool is_number(std::string s) {
     for (auto ch: s) {
-      if (ch < '0' || ch > '9') { return false; }
+      [[likely]] if (ch < '0' || ch > '9') { return false; }
     }
     return true;
   }
@@ -177,14 +178,14 @@ namespace lambda {
       return { this, ReduceType::Null };
     }
 
-    if (is_number(literal)) {
+    [[unlikely]] if (is_number(literal)) {
       auto new_expr = generate_church_number(atoi(literal.c_str()));
       new_expr->set_computational_priority(computational_priority_flag);
       delete this;
       return { new_expr, ReduceType::Delta };
     }
 
-    if (has(symbol_table, literal)) {
+    [[unlikely]] if (has(symbol_table, literal)) {
       auto new_expr = symbol_table.find(literal)->second
         ->clone(computational_priority_flag);
       delete this;
@@ -201,7 +202,7 @@ namespace lambda {
     Expression& expression,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
-    if (*this == variable) {
+    [[unlikely]] if (*this == variable) {
       auto new_expr = expression.clone(computational_priority_flag);
       delete this;
       return { new_expr, ReduceType::Beta };
@@ -323,14 +324,14 @@ namespace lambda {
     Expression& expression,
     std::multiset<std::string>& bound_variables
   ) -> std::pair<Expression*, ReduceType> {
-    if (variable == binder) {
+    [[unlikely]] if (variable == binder) {
       return { this, ReduceType::Null };
     }
 
-    if (expression.is_variable_free(binder.get_literal())) {
+    [[unlikely]] if (expression.is_variable_free(binder.get_literal())) {
       for (int i = 0;; i++) {
         std::string&& new_literal = index_to_string(i);
-        if (
+        [[likely]] if (
           !has(bound_variables, new_literal) 
           && new_literal != binder.get_literal()
           && !expression.is_variable_free(new_literal)
@@ -617,7 +618,7 @@ namespace lambda {
 
 
   static auto generate_church_number_body(unsigned number) -> Expression* {
-    if (number == 0) { return new Variable("x"); }
+    [[unlikely]] if (number == 0) { return new Variable("x"); }
 
     return new Application(
       new Variable("f"),
@@ -636,10 +637,12 @@ namespace lambda {
   }
 
   static std::string reduce_type_to_header(ReduceType reduce_type) {
-    if (reduce_type == ReduceType::Alpha) { return "alpha> "; }
-    else if (reduce_type == ReduceType::Beta) { return "beta>  "; }
-    else if (reduce_type == ReduceType::Delta) { return "delta> "; }
-    else /* reduce_type == ReduceType::NoReduce */ { return ""; }
+    switch (reduce_type) {
+      [[unlikely]] case ReduceType::Alpha: return "alpha> ";
+      [[likely]] case ReduceType::Beta: return "beta>  ";
+      case ReduceType::Delta: return "delta> ";
+      default: assert(false); return "";
+    }
   }
 
   static void string_println(std::string& s, FILE* out) {
@@ -675,7 +678,7 @@ namespace lambda {
         ReduceType reduce_type;
         std::tie(expr, reduce_type) = expr->reduce(symbol_table, bound_variables);
 
-        if (reduce_type == ReduceType::Null) { break; }
+        [[unlikely]] if (reduce_type == ReduceType::Null) { break; }
 
         if (display_process) {
           auto&& str = reduce_type_to_header(reduce_type) + expr->to_string();
